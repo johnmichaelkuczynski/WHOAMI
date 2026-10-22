@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request } from "express";
-import { count, desc, eq, isNotNull } from "drizzle-orm";
+import { and, count, desc, eq, isNotNull, ne } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   careerAssessmentsTable,
@@ -170,10 +170,50 @@ router.post("/discovery/conversations/:id/messages", async (req, res): Promise<v
     .where(eq(careerMessagesTable.conversationId, conversation.id))
     .orderBy(careerMessagesTable.createdAt);
   const profile = await getOrCreateProfile();
+  const [savedReflections, recentUserMessages] = await Promise.all([
+    db
+      .select({
+        title: careerConversationsTable.title,
+        summary: careerConversationsTable.summary,
+      })
+      .from(careerConversationsTable)
+      .where(isNotNull(careerConversationsTable.summary))
+      .orderBy(desc(careerConversationsTable.updatedAt))
+      .limit(8),
+    db
+      .select({
+        title: careerConversationsTable.title,
+        content: careerMessagesTable.content,
+      })
+      .from(careerMessagesTable)
+      .innerJoin(
+        careerConversationsTable,
+        eq(careerMessagesTable.conversationId, careerConversationsTable.id),
+      )
+      .where(
+        and(
+          ne(careerMessagesTable.conversationId, conversation.id),
+          eq(careerMessagesTable.role, "user"),
+        ),
+      )
+      .orderBy(desc(careerMessagesTable.createdAt))
+      .limit(8),
+  ]);
+  const memoryContext = JSON.stringify({
+    profile: profileSnapshot(profile),
+    savedReflections: savedReflections.map(({ title, summary }) => ({
+      title,
+      summary: summary?.slice(0, 1200),
+    })),
+    recentUserMessages: recentUserMessages.map(({ title, content }) => ({
+      title,
+      content: content.slice(0, 500),
+    })),
+  });
   let reply: string;
   try {
     reply = await reflectOnMessage(
-      profile.summary,
+      memoryContext,
       [
         ...messages.slice(-18).map((message) => ({
           role: message.role,
