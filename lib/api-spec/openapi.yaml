@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: discovery
+    description: Career exploration and saved profile
 paths:
   /healthz:
     get:
@@ -24,6 +26,246 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /discovery/dashboard:
+    get:
+      operationId: getDiscoveryDashboard
+      tags: [discovery]
+      summary: Get career exploration overview
+      responses:
+        "200":
+          description: Overview and recent activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /discovery/profile:
+    get:
+      operationId: getCareerProfile
+      tags: [discovery]
+      summary: Get evolving career profile
+      responses:
+        "200":
+          description: Personal career profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CareerProfile"
+    patch:
+      operationId: updateCareerProfile
+      tags: [discovery]
+      summary: Update profile notes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileUpdate"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CareerProfile"
+  /discovery/conversations:
+    get:
+      operationId: listCareerConversations
+      tags: [discovery]
+      summary: List saved reflection conversations
+      responses:
+        "200":
+          description: Saved conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CareerConversation"
+    post:
+      operationId: createCareerConversation
+      tags: [discovery]
+      summary: Start a reflection conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConversationInput"
+      responses:
+        "201":
+          description: New conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CareerConversation"
+  /discovery/conversations/{id}/messages:
+    get:
+      operationId: listCareerMessages
+      tags: [discovery]
+      summary: List messages in a conversation
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Conversation messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CareerMessage"
+    post:
+      operationId: sendCareerMessage
+      tags: [discovery]
+      summary: Send a reflection message
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageInput"
+      responses:
+        "201":
+          description: User message and AI response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageExchange"
+  /discovery/conversations/{id}/summary:
+    post:
+      operationId: summarizeCareerConversation
+      tags: [discovery]
+      summary: Summarize a conversation and update the profile
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Saved conversation summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationSummary"
+  /discovery/assessments:
+    get:
+      operationId: listAssessmentResults
+      tags: [discovery]
+      summary: List saved assessment scores
+      responses:
+        "200":
+          description: Assessment history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AssessmentResult"
+  /discovery/assessments/start:
+    post:
+      operationId: startAssessment
+      tags: [discovery]
+      summary: Create a rotating exploratory assessment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssessmentStartInput"
+      responses:
+        "201":
+          description: Assessment questions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssessmentSession"
+  /discovery/assessments/{id}/submit:
+    post:
+      operationId: submitAssessment
+      tags: [discovery]
+      summary: Score and save an assessment
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssessmentAnswers"
+      responses:
+        "201":
+          description: Saved assessment result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssessmentResult"
+  /discovery/recommendations:
+    get:
+      operationId: listCareerRecommendations
+      tags: [discovery]
+      summary: List saved book and activity recommendations
+      responses:
+        "200":
+          description: Career exploration recommendations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CareerRecommendation"
+    post:
+      operationId: generateCareerRecommendations
+      tags: [discovery]
+      summary: Generate fresh book and activity recommendations
+      responses:
+        "201":
+          description: New recommendations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CareerRecommendation"
+  /discovery/recommendations/{id}:
+    patch:
+      operationId: updateCareerRecommendation
+      tags: [discovery]
+      summary: Update recommendation status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecommendationUpdate"
+      responses:
+        "200":
+          description: Updated recommendation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CareerRecommendation"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +275,146 @@ components:
           type: string
       required:
         - status
+    CareerProfile:
+      type: object
+      required: [id, summary, strengths, interests, workPreferences, updatedAt]
+      properties:
+        id: { type: integer }
+        summary: { type: string }
+        strengths: { type: array, items: { type: string } }
+        interests: { type: array, items: { type: string } }
+        workPreferences: { type: array, items: { type: string } }
+        updatedAt: { type: string, format: date-time }
+    ProfileUpdate:
+      type: object
+      properties:
+        summary: { type: string }
+        strengths: { type: array, items: { type: string } }
+        interests: { type: array, items: { type: string } }
+        workPreferences: { type: array, items: { type: string } }
+    CareerConversation:
+      type: object
+      required: [id, title, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        summary: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ConversationInput:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1 }
+    CareerMessage:
+      type: object
+      required: [id, conversationId, role, content, createdAt]
+      properties:
+        id: { type: integer }
+        conversationId: { type: integer }
+        role: { type: string, enum: [user, assistant] }
+        content: { type: string }
+        createdAt: { type: string, format: date-time }
+    MessageInput:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string, minLength: 1 }
+    MessageExchange:
+      type: object
+      required: [userMessage, assistantMessage]
+      properties:
+        userMessage: { $ref: "#/components/schemas/CareerMessage" }
+        assistantMessage: { $ref: "#/components/schemas/CareerMessage" }
+    ConversationSummary:
+      type: object
+      required: [conversationId, summary, profile]
+      properties:
+        conversationId: { type: integer }
+        summary: { type: string }
+        profile: { $ref: "#/components/schemas/CareerProfile" }
+    AssessmentStartInput:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [interests, personality] }
+    AssessmentQuestion:
+      type: object
+      required: [id, prompt, trait]
+      properties:
+        id: { type: string }
+        prompt: { type: string }
+        trait: { type: string }
+    AssessmentSession:
+      type: object
+      required: [id, kind, questions]
+      properties:
+        id: { type: integer }
+        kind: { type: string, enum: [interests, personality] }
+        questions:
+          type: array
+          items: { $ref: "#/components/schemas/AssessmentQuestion" }
+    AssessmentAnswer:
+      type: object
+      required: [questionId, score]
+      properties:
+        questionId: { type: string }
+        score: { type: integer, minimum: 1, maximum: 5 }
+    AssessmentAnswers:
+      type: object
+      required: [answers]
+      properties:
+        answers:
+          type: array
+          items: { $ref: "#/components/schemas/AssessmentAnswer" }
+    TraitScore:
+      type: object
+      required: [trait, score]
+      properties:
+        trait: { type: string }
+        score: { type: number, minimum: 0, maximum: 100 }
+    AssessmentResult:
+      type: object
+      required: [id, kind, scores, completedAt]
+      properties:
+        id: { type: integer }
+        kind: { type: string, enum: [interests, personality] }
+        scores:
+          type: array
+          items: { $ref: "#/components/schemas/TraitScore" }
+        completedAt: { type: string, format: date-time }
+    CareerRecommendation:
+      type: object
+      required: [id, kind, title, reason, status, createdAt]
+      properties:
+        id: { type: integer }
+        kind: { type: string, enum: [book, activity] }
+        title: { type: string }
+        reason: { type: string }
+        status: { type: string, enum: [new, saved, tried, dismissed] }
+        createdAt: { type: string, format: date-time }
+    RecommendationUpdate:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [new, saved, tried, dismissed] }
+    RecentActivity:
+      type: object
+      required: [kind, label, createdAt]
+      properties:
+        kind: { type: string, enum: [conversation, assessment, recommendation] }
+        label: { type: string }
+        createdAt: { type: string, format: date-time }
+    DashboardSummary:
+      type: object
+      required: [profile, conversationCount, assessmentCount, recommendationCount, latestSummary, recentActivity]
+      properties:
+        profile: { $ref: "#/components/schemas/CareerProfile" }
+        conversationCount: { type: integer }
+        assessmentCount: { type: integer }
+        recommendationCount: { type: integer }
+        latestSummary: { type: ["string", "null"] }
+        recentActivity:
+          type: array
+          items: { $ref: "#/components/schemas/RecentActivity" }
 

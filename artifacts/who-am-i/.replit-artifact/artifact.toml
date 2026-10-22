@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Who Am I?"
+description = "A personal career-exploration app that helps one user understand their interests, strengths, and work preferences through reflective AI conversation, rotating exploratory assessments, evolving profile summaries, and saved reading and activity recommendations."
+version = "1.0.0"
+id = "artifacts/who-am-i"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25043
+
+[services.development]
+run = "pnpm --filter @workspace/who-am-i run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/who-am-i", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/who-am-i/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25043"
+BASE_PATH = "/"
