@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useRef } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import {
   Activity, ArrowDownToLine, ArrowRight, BookOpen, Check, CheckCircle2,
-  ChevronLeft, ChevronRight, Compass, FileText, Heart, Lightbulb,
+  ChevronLeft, ChevronRight, Compass, FileText, Heart, Lightbulb, Mic, MicOff,
   LoaderCircle, MessageCircle, Plus, Send, Sparkles, UserRound, Waves, X,
 } from 'lucide-react';
 import { Link, Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
@@ -33,6 +34,27 @@ const navItems = [
 ];
 const dateLabel = (value?: string) => value ? new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(new Date(value)) : 'Just now';
 const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
+
+type SpeechRecognitionResultLike = { isFinal: boolean; [index: number]: { transcript: string } };
+type SpeechRecognitionEventLike = { resultIndex: number; results: ArrayLike<SpeechRecognitionResultLike> };
+type SpeechRecognitionLike = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+};
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+declare global {
+  interface Window {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  }
+}
 
 function Shell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
@@ -125,6 +147,61 @@ function HomePage() {
   const [notice, setNotice] = useState('');
   const [savedSummary, setSavedSummary] = useState('');
   const [recommendationNotice, setRecommendationNotice] = useState('');
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  useEffect(() => () => recognitionRef.current?.abort(), []);
+  const toggleDictation = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      return;
+    }
+    const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    if (!Recognition) {
+      setNotice('Voice input is not supported by this browser. Try Chrome or Edge, or type your message.');
+      return;
+    }
+    setNotice('');
+    const recognition = new Recognition();
+    recognition.lang = navigator.language || 'en-US';
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.onresult = event => {
+      const transcript = Array.from(event.results)
+        .slice(event.resultIndex)
+        .filter(result => result.isFinal)
+        .map(result => result[0].transcript.trim())
+        .filter(Boolean)
+        .join(' ');
+      if (transcript) {
+        setDraft(previous => `${previous.trimEnd()}${previous.trim() ? ' ' : ''}${transcript}`);
+      }
+    };
+    recognition.onerror = event => {
+      const errors: Record<string, string> = {
+        'not-allowed': 'Microphone access is blocked. Allow microphone access in your browser settings and try again.',
+        'service-not-allowed': 'Speech recognition is blocked by the browser. Check browser permissions and try again.',
+        'audio-capture': 'No microphone was found. Connect or enable a microphone and try again.',
+        network: 'Speech recognition could not connect. Check your connection and try again.',
+        'no-speech': 'No speech was detected. Try speaking a little closer to your microphone.',
+      };
+      setNotice(errors[event.error] ?? 'Voice input stopped unexpectedly. You can try again or type your message.');
+      recognitionRef.current = null;
+      setIsListening(false);
+    };
+    recognition.onend = () => {
+      if (recognitionRef.current === recognition) recognitionRef.current = null;
+      setIsListening(false);
+    };
+    try {
+      recognitionRef.current = recognition;
+      setIsListening(true);
+      recognition.start();
+    } catch {
+      recognitionRef.current = null;
+      setIsListening(false);
+      setNotice('The microphone could not be started. Check browser permission and try again.');
+    }
+  };
   const refresh = () => { void qc.invalidateQueries({ queryKey: getGetDiscoveryDashboardQueryKey() }); void qc.invalidateQueries({ queryKey: getListCareerConversationsQueryKey() }); };
   const startConversation = async (title: string) => {
     const conversation = await create.mutateAsync({ data: { title: title.trim() || 'A new reflection' } });
@@ -170,7 +247,7 @@ function HomePage() {
         </div>
         {notice && <div className="mx-4 mb-2 flex items-center justify-between rounded-lg bg-accent px-3 py-2 text-xs text-accent-foreground md:mx-6" role="status"><span data-testid="status-chat">{notice}</span><button onClick={() => setNotice('')} data-testid="button-dismiss-notice"><X size={13}/></button></div>}
         <form onSubmit={handleSend} className="border-t border-border bg-card px-3 py-3 md:px-6 md:py-4">
-          <div className="flex items-end gap-2 rounded-xl border border-border bg-background p-2 focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/10"><textarea value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} placeholder="Write as much or as little as you need…" rows={12} data-testid="input-chat-message" className="max-h-[480px] min-h-[288px] flex-1 resize-y bg-transparent px-2 py-1.5 text-[13px] leading-6 outline-none placeholder:text-muted-foreground/70"/><button type="submit" disabled={!draft.trim() || send.isPending || create.isPending} data-testid="button-send-message" aria-label="Send reflection" className="mb-1 grid size-9 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground transition-opacity disabled:opacity-40"><Send size={16}/></button></div><div className="mt-2 flex items-center justify-between px-1 text-[9px] text-muted-foreground"><span>Enter to send · Shift + Enter for a new line</span><span>Not a test. No wrong answers.</span></div>
+          <div className="flex items-end gap-2 rounded-xl border border-border bg-background p-2 focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/10"><textarea value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} placeholder="Write as much or as little as you need…" rows={12} data-testid="input-chat-message" className="max-h-[480px] min-h-[288px] flex-1 resize-y bg-transparent px-2 py-1.5 text-[13px] leading-6 outline-none placeholder:text-muted-foreground/70"/><button type="button" onClick={toggleDictation} aria-label={isListening ? 'Stop voice input' : 'Start voice input'} aria-pressed={isListening} title={isListening ? 'Stop voice input' : 'Dictate a message'} data-testid="button-voice-input" className={`mb-1 grid size-9 shrink-0 place-items-center rounded-lg transition-colors ${isListening ? 'bg-destructive/10 text-destructive' : 'text-muted-foreground hover:bg-secondary hover:text-primary'}`}>{isListening ? <MicOff size={16}/> : <Mic size={16}/>}</button><button type="submit" disabled={!draft.trim() || send.isPending || create.isPending} data-testid="button-send-message" aria-label="Send reflection" className="mb-1 grid size-9 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground transition-opacity disabled:opacity-40"><Send size={16}/></button></div><div className="mt-2 flex items-center justify-between px-1 text-[9px] text-muted-foreground"><span>{isListening ? 'Listening… Tap the microphone to stop.' : 'Enter to send · Shift + Enter for a new line'}</span><span>Not a test. No wrong answers.</span></div>
         </form>
       </section>
       <aside className="space-y-4">
