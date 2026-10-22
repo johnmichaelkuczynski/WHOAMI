@@ -2,8 +2,8 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import {
   Activity, ArrowDownToLine, ArrowRight, BookOpen, Check, CheckCircle2,
-  Compass, FileText, Heart, Lightbulb, LoaderCircle, MessageCircle,
-  Plus, Send, Sparkles, UserRound, Waves, X,
+  ChevronLeft, ChevronRight, Compass, FileText, Heart, Lightbulb,
+  LoaderCircle, MessageCircle, Plus, Send, Sparkles, UserRound, Waves, X,
 } from 'lucide-react';
 import { Link, Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 import {
@@ -34,23 +34,43 @@ const messageOf = (error: unknown) => error instanceof Error ? error.message : '
 
 function Shell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem('who-am-i-sidebar-collapsed-v2') !== 'false',
+  );
   const current = navItems.find(item => item.href === location)?.label ?? 'Reflection';
+  useEffect(() => {
+    localStorage.setItem('who-am-i-sidebar-collapsed-v2', String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
   return <div className="app-shell flex bg-background text-foreground">
-    <aside className="hidden md:flex w-[230px] shrink-0 flex-col border-r border-border bg-[hsl(var(--sidebar))] px-5 py-6">
-      <Link href="/" className="mb-10 flex items-center gap-3 no-underline" data-testid="link-brand">
-        <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground"><Waves size={19}/></span>
-        <span><span className="block text-sm font-semibold tracking-tight">Who Am I?</span><span className="mono-label text-[9px] text-muted-foreground">A CAREER FIELD GUIDE</span></span>
-      </Link>
-      <p className="mono-label mb-3 px-2 text-[9px] text-muted-foreground">YOUR SPACE</p>
-      <nav className="space-y-1" aria-label="Main navigation">
+    <aside className={`hidden shrink-0 flex-col border-r border-border bg-[hsl(var(--sidebar))] py-6 transition-[width,padding] duration-200 md:flex ${sidebarCollapsed ? 'w-[68px] items-center px-2' : 'w-[230px] px-5'}`}>
+      <div className={`mb-9 flex w-full ${sidebarCollapsed ? 'flex-col items-center gap-3' : 'items-center justify-between gap-3'}`}>
+        <Link href="/" className={`flex min-w-0 items-center gap-3 no-underline ${sidebarCollapsed ? 'justify-center' : ''}`} data-testid="link-brand" aria-label="Who Am I? home">
+          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground"><Waves size={19}/></span>
+          {!sidebarCollapsed && <span><span className="block text-sm font-semibold tracking-tight">Who Am I?</span><span className="mono-label text-[9px] text-muted-foreground">A CAREER FIELD GUIDE</span></span>}
+        </Link>
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed(value => !value)}
+          aria-label={sidebarCollapsed ? 'Expand navigation panel' : 'Collapse navigation panel'}
+          aria-expanded={!sidebarCollapsed}
+          data-testid="button-toggle-sidebar"
+          className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+        >
+          {sidebarCollapsed ? <ChevronRight size={16}/> : <ChevronLeft size={16}/>}
+        </button>
+      </div>
+      {!sidebarCollapsed && <p className="mono-label mb-3 px-2 text-[9px] text-muted-foreground">YOUR SPACE</p>}
+      <nav className={`w-full space-y-1 ${sidebarCollapsed ? 'px-1' : ''}`} aria-label="Main navigation">
         {navItems.map(({ href, label, icon: Icon }) => <Link key={href} href={href}
-          className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] transition-colors ${location === href ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:bg-card/70 hover:text-foreground'}`}
-          data-testid={`link-nav-${label.toLowerCase().replaceAll(' ', '-')}`}><Icon size={16}/><span>{label}</span>{location === href && <span className="ml-auto size-1.5 rounded-full bg-primary"/>}</Link>)}
+          aria-label={label}
+          title={sidebarCollapsed ? label : undefined}
+          className={`flex items-center rounded-lg py-2.5 text-[13px] transition-colors ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${location === href ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:bg-card/70 hover:text-foreground'}`}
+          data-testid={`link-nav-${label.toLowerCase().replaceAll(' ', '-')}`}><Icon size={16}/>{!sidebarCollapsed && <><span>{label}</span>{location === href && <span className="ml-auto size-1.5 rounded-full bg-primary"/>}</>}</Link>)}
       </nav>
-      <div className="mt-auto rounded-xl border border-border/80 bg-card/70 p-4">
+      {!sidebarCollapsed && <div className="mt-auto rounded-xl border border-border/80 bg-card/70 p-4">
         <div className="mb-2 flex items-center gap-2 text-primary"><Sparkles size={15}/><span className="mono-label text-[9px]">A NOTE TO SELF</span></div>
         <p className="serif-display text-[19px] leading-[1.15] text-foreground">You don't need the whole map. Just the next honest step.</p>
-      </div>
+      </div>}
     </aside>
     <main className="min-w-0 flex-1">
       <header className="sticky top-0 z-20 flex h-[58px] items-center justify-between border-b border-border/80 bg-background/95 px-4 backdrop-blur md:px-8">
@@ -140,12 +160,12 @@ function HomePage() {
         </div>
         {showNew && <form className="flex gap-2 border-b border-border bg-secondary/30 px-4 py-3 md:px-6" onSubmit={async e => { e.preventDefault(); try { await startConversation(newTitle); } catch (error) { setNotice(messageOf(error)); } }}><input value={newTitle} onChange={e => setNewTitle(e.target.value)} autoFocus placeholder="Give this reflection a name" data-testid="input-conversation-title" className="min-w-0 flex-1 rounded-lg border border-border bg-card px-3 py-2 text-xs outline-none focus:border-primary"/><Button type="submit" testId="button-create-conversation" disabled={create.isPending}>{create.isPending ? 'Starting…' : 'Start'}</Button><button type="button" onClick={() => setShowNew(false)} data-testid="button-cancel-conversation" className="grid size-9 place-items-center text-muted-foreground"><X size={15}/></button></form>}
         <div className="flex-1 space-y-5 overflow-y-auto px-4 py-6 md:px-8 md:py-8" data-testid="list-chat-messages">
-          {chatLoading || messages.isLoading ? <Skeleton rows={4}/> : messages.isError ? <QueryError error={messages.error} retry={() => void messages.refetch()}/> : !active || !messages.data?.length ? <div className="flex min-h-[280px] flex-col justify-center"><p className="mono-label mb-3 text-[9px] text-primary">START WHERE YOU ARE</p><p className="serif-display max-w-lg text-[34px] leading-[1.08] md:text-[42px]">You can bring the uncertainty, too.</p><p className="mt-4 max-w-lg text-[13px] leading-6 text-muted-foreground">Tell me what’s shifting, what you’re curious about, or what a good workday feels like. We’ll find the thread together.</p><div className="mt-7 flex flex-wrap gap-2">{['I’m not sure what I want next', 'When do I feel most like myself at work?', 'Help me make sense of a recent win'].map((prompt, i) => <button key={prompt} onClick={() => setDraft(prompt)} data-testid={`button-prompt-${i}`} className="rounded-full border border-border bg-background px-3 py-2 text-left text-[11px] text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary">{prompt}</button>)}</div></div> : messages.data.map(message => <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'flex-row-reverse' : ''}`} data-testid={`message-${message.id}`}><span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full ${message.role === 'user' ? 'bg-[hsl(14_45%_91%)] text-[hsl(14_41%_35%)]' : 'bg-[hsl(152_26%_88%)] text-primary'}`}>{message.role === 'user' ? <UserRound size={14}/> : <Waves size={14}/>}</span><div className={`max-w-[88%] rounded-2xl px-4 py-3 md:max-w-[78%] ${message.role === 'user' ? 'bg-secondary text-foreground' : 'bg-background'}`}><p className="message-copy text-[13px] leading-[1.75]">{message.content}</p><time className="mt-2 block text-[9px] text-muted-foreground">{dateLabel(message.createdAt)}</time></div></div>)}
+          {chatLoading || messages.isLoading ? <Skeleton rows={4}/> : messages.isError ? <QueryError error={messages.error} retry={() => void messages.refetch()}/> : !active || !messages.data?.length ? <div className="flex min-h-[180px] flex-col justify-center py-2"><p className="mono-label mb-1.5 text-[8px] text-primary">START WHERE YOU ARE</p><p className="serif-display max-w-lg text-[23px] leading-tight md:text-[26px]">You can bring the uncertainty, too.</p><p className="mt-2 max-w-lg text-[11px] leading-[1.55] text-muted-foreground">Tell me what’s shifting, what you’re curious about, or what a good workday feels like. We’ll find the thread together.</p><div className="mt-4 grid grid-cols-2 gap-1.5 lg:grid-cols-3">{['I’m not sure what I want next', 'When do I feel most like myself at work?', 'Help me make sense of a recent win', 'What kind of work gives me energy?', 'What do people come to me for?', 'Tell me about a time I felt proud of my work', 'What drains me, even when I’m good at it?', 'What would I try if I could not fail?'].map((prompt, i) => <button key={prompt} onClick={() => setDraft(prompt)} data-testid={`button-prompt-${i}`} className="flex min-h-9 w-full items-center justify-center rounded-xl border border-border bg-background px-2 py-1.5 text-center text-[9px] leading-[1.35] text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary">{prompt}</button>)}</div></div> : messages.data.map(message => <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'flex-row-reverse' : ''}`} data-testid={`message-${message.id}`}><span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full ${message.role === 'user' ? 'bg-[hsl(14_45%_91%)] text-[hsl(14_41%_35%)]' : 'bg-[hsl(152_26%_88%)] text-primary'}`}>{message.role === 'user' ? <UserRound size={14}/> : <Waves size={14}/>}</span><div className={`max-w-[88%] rounded-2xl px-4 py-3 md:max-w-[78%] ${message.role === 'user' ? 'bg-secondary text-foreground' : 'bg-background'}`}><p className="message-copy text-[13px] leading-[1.75]">{message.content}</p><time className="mt-2 block text-[9px] text-muted-foreground">{dateLabel(message.createdAt)}</time></div></div>)}
           {send.isPending && <div className="flex items-center gap-3 text-xs text-muted-foreground"><span className="grid size-7 place-items-center rounded-full bg-secondary text-primary"><Waves size={14}/></span><span className="animate-pulse">Finding the right words…</span></div>}
         </div>
         {notice && <div className="mx-4 mb-2 flex items-center justify-between rounded-lg bg-accent px-3 py-2 text-xs text-accent-foreground md:mx-6" role="status"><span data-testid="status-chat">{notice}</span><button onClick={() => setNotice('')} data-testid="button-dismiss-notice"><X size={13}/></button></div>}
         <form onSubmit={handleSend} className="border-t border-border bg-card px-3 py-3 md:px-6 md:py-4">
-          <div className="flex items-end gap-2 rounded-xl border border-border bg-background p-2 focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/10"><textarea value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} placeholder="Write as much or as little as you need…" rows={3} data-testid="input-chat-message" className="max-h-48 min-h-[72px] flex-1 resize-y bg-transparent px-2 py-1.5 text-[13px] leading-6 outline-none placeholder:text-muted-foreground/70"/><button type="submit" disabled={!draft.trim() || send.isPending || create.isPending} data-testid="button-send-message" aria-label="Send reflection" className="mb-1 grid size-9 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground transition-opacity disabled:opacity-40"><Send size={16}/></button></div><div className="mt-2 flex items-center justify-between px-1 text-[9px] text-muted-foreground"><span>Enter to send · Shift + Enter for a new line</span><span>Not a test. No wrong answers.</span></div>
+          <div className="flex items-end gap-2 rounded-xl border border-border bg-background p-2 focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/10"><textarea value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} placeholder="Write as much or as little as you need…" rows={12} data-testid="input-chat-message" className="max-h-[480px] min-h-[288px] flex-1 resize-y bg-transparent px-2 py-1.5 text-[13px] leading-6 outline-none placeholder:text-muted-foreground/70"/><button type="submit" disabled={!draft.trim() || send.isPending || create.isPending} data-testid="button-send-message" aria-label="Send reflection" className="mb-1 grid size-9 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground transition-opacity disabled:opacity-40"><Send size={16}/></button></div><div className="mt-2 flex items-center justify-between px-1 text-[9px] text-muted-foreground"><span>Enter to send · Shift + Enter for a new line</span><span>Not a test. No wrong answers.</span></div>
         </form>
       </section>
       <aside className="space-y-4">
