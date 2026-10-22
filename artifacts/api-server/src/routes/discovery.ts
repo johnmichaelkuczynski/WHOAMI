@@ -169,6 +169,19 @@ router.post("/discovery/conversations/:id/messages", async (req, res): Promise<v
     .from(careerMessagesTable)
     .where(eq(careerMessagesTable.conversationId, conversation.id))
     .orderBy(careerMessagesTable.createdAt);
+  let assistantTurnsSinceProposal = 0;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== "assistant") continue;
+    if (
+      /^the problem:/im.test(message.content) &&
+      /^the fix:/im.test(message.content)
+    ) {
+      break;
+    }
+    assistantTurnsSinceProposal += 1;
+  }
+  const proposalRequired = assistantTurnsSinceProposal >= 2;
   const profile = await getOrCreateProfile();
   const [savedReflections, recentUserMessages] = await Promise.all([
     db
@@ -221,6 +234,7 @@ router.post("/discovery/conversations/:id/messages", async (req, res): Promise<v
         })),
         { role: "user", content: body.data.content },
       ],
+      proposalRequired,
     );
   } catch (error) {
     logAiError(req, error);
