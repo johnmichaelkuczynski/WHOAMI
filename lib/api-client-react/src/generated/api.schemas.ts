@@ -77,16 +77,29 @@ export type AssessmentStartInputKind = typeof AssessmentStartInputKind[keyof typ
 export const AssessmentStartInputKind = {
   interests: 'interests',
   personality: 'personality',
+  riasec: 'riasec',
+  ipip: 'ipip',
 } as const;
 
 export interface AssessmentStartInput {
   kind: AssessmentStartInputKind;
+  /** Development-only marker used to keep QA answers out of the evolving profile. */
+  verificationRun?: boolean;
 }
+
+export type AssessmentQuestionKeying = typeof AssessmentQuestionKeying[keyof typeof AssessmentQuestionKeying];
+
+
+export const AssessmentQuestionKeying = {
+  positive: 'positive',
+  reverse: 'reverse',
+} as const;
 
 export interface AssessmentQuestion {
   id: string;
   prompt: string;
   trait: string;
+  keying?: AssessmentQuestionKeying;
 }
 
 export type AssessmentSessionKind = typeof AssessmentSessionKind[keyof typeof AssessmentSessionKind];
@@ -95,11 +108,14 @@ export type AssessmentSessionKind = typeof AssessmentSessionKind[keyof typeof As
 export const AssessmentSessionKind = {
   interests: 'interests',
   personality: 'personality',
+  riasec: 'riasec',
+  ipip: 'ipip',
 } as const;
 
 export interface AssessmentSession {
   id: number;
   kind: AssessmentSessionKind;
+  verificationRun: boolean;
   questions: AssessmentQuestion[];
 }
 
@@ -131,11 +147,17 @@ export type AssessmentResultKind = typeof AssessmentResultKind[keyof typeof Asse
 export const AssessmentResultKind = {
   interests: 'interests',
   personality: 'personality',
+  riasec: 'riasec',
+  ipip: 'ipip',
 } as const;
 
 export interface AssessmentResult {
   id: number;
   kind: AssessmentResultKind;
+  verificationRun: boolean;
+  profileUpdated?: boolean;
+  questions: AssessmentQuestion[];
+  answers: AssessmentAnswer[];
   scores: TraitScore[];
   completedAt: string;
 }

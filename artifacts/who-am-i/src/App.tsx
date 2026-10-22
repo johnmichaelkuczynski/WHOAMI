@@ -21,11 +21,13 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
+import TestsPage from '@/pages/tests';
 
 const queryClient = new QueryClient();
 const navItems = [
   { href: '/', label: 'Reflection', icon: MessageCircle },
   { href: '/assessments', label: 'Check-ins', icon: Activity },
+  { href: '/tests', label: 'Tests', icon: CheckCircle2 },
   { href: '/profile', label: 'Your profile', icon: UserRound },
   { href: '/recommendations', label: 'Field notes', icon: BookOpen },
 ];
@@ -107,7 +109,9 @@ function HomePage() {
   const qc = useQueryClient();
   const dash = useGetDiscoveryDashboard();
   const conversations = useListCareerConversations();
+  const recommendations = useListCareerRecommendations();
   const create = useCreateCareerConversation();
+  const generateRecommendations = useGenerateCareerRecommendations();
   const [activeId, setActiveId] = useState<number | null>(null);
   const conversationList = conversations.data ?? [];
   const active = conversationList.find(c => c.id === activeId) ?? conversationList[0];
@@ -120,6 +124,7 @@ function HomePage() {
   const [showNew, setShowNew] = useState(false);
   const [notice, setNotice] = useState('');
   const [savedSummary, setSavedSummary] = useState('');
+  const [recommendationNotice, setRecommendationNotice] = useState('');
   const refresh = () => { void qc.invalidateQueries({ queryKey: getGetDiscoveryDashboardQueryKey() }); void qc.invalidateQueries({ queryKey: getListCareerConversationsQueryKey() }); };
   const startConversation = async (title: string) => {
     const conversation = await create.mutateAsync({ data: { title: title.trim() || 'A new reflection' } });
@@ -174,6 +179,14 @@ function HomePage() {
         <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-card/60 p-4"><Lightbulb size={16} className="mt-0.5 shrink-0 text-[#c58b43]"/><p className="text-[11px] leading-5 text-muted-foreground">Your profile grows from what you share. Summarize a conversation to keep the insights that matter.</p></div>
       </aside>
     </div>
+    <section className="mt-6 rounded-2xl border border-border bg-card p-5 md:p-7" data-testid="recommendation-console">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div><p className="mono-label text-[9px] text-primary">OUTSIDE THE CONVERSATION</p><h2 className="serif-display mt-1 text-[26px]">Books and activities to explore</h2><p className="mt-1 text-[11px] text-muted-foreground">A separate list of practical next steps, saved in Field notes.</p></div>
+        <div className="flex items-center gap-3"><Link href="/recommendations" className="text-[11px] font-semibold text-primary underline underline-offset-4">View Field notes</Link><Button testId="button-home-generate-recommendations" disabled={generateRecommendations.isPending} onClick={() => { setRecommendationNotice(''); generateRecommendations.mutate(undefined, { onSuccess: async () => { await qc.invalidateQueries({ queryKey: getListCareerRecommendationsQueryKey() }); }, onError: error => setRecommendationNotice(messageOf(error)) }); }}>{generateRecommendations.isPending ? <LoaderCircle size={14} className="animate-spin"/> : <Sparkles size={14}/>}Find fresh ideas</Button></div>
+      </div>
+      {recommendationNotice && <p role="status" className="mt-3 text-xs text-destructive">{recommendationNotice}</p>}
+      {recommendations.isLoading ? <div className="mt-4"><Skeleton rows={2}/></div> : recommendations.isError ? <div className="mt-4"><QueryError error={recommendations.error} retry={() => void recommendations.refetch()}/></div> : !recommendations.data?.length ? <p className="mt-4 text-xs text-muted-foreground">Generate ideas when you’re ready. They’ll stay separate from your chat.</p> : <div className="mt-4 grid gap-2 md:grid-cols-2">{recommendations.data.slice(0, 4).map(item => <article key={item.id} className="rounded-xl border border-border bg-background p-4" data-testid={`home-recommendation-${item.id}`}><p className="mono-label text-[8px] text-primary">{item.kind === 'book' ? 'BOOK' : 'ACTIVITY'}</p><h3 className="serif-display mt-1 text-[20px]">{item.title}</h3><p className="mt-1 text-[11px] leading-5 text-muted-foreground">{item.reason}</p></article>)}</div>}
+    </section>
   </div>;
 }
 
@@ -203,6 +216,7 @@ function ProfilePage() {
   const qc = useQueryClient();
   const profile = useGetCareerProfile();
   const conversations = useListCareerConversations();
+  const assessments = useListAssessmentResults();
   const update = useUpdateCareerProfile();
   const [summary, setSummary] = useState('');
   const [strengths, setStrengths] = useState('');
@@ -225,6 +239,7 @@ function ProfilePage() {
       <aside className="space-y-4">
         <div className="rounded-2xl border border-border bg-[hsl(36_40%_94%)] p-5"><p className="mono-label text-[9px] text-primary">LAST UPDATED</p><p className="serif-display mt-2 text-2xl">{dateLabel(profile.data?.updatedAt)}</p><p className="mt-1 text-[10px] text-muted-foreground">Your understanding can change. That’s the point.</p></div>
         <div className="rounded-2xl border border-border bg-card p-5"><div className="mb-4 flex items-center justify-between"><div><p className="mono-label text-[9px] text-muted-foreground">SAVED CONVERSATIONS</p><h2 className="serif-display mt-1 text-[23px]">The useful bits</h2></div><MessageCircle size={17} className="text-primary"/></div>{conversations.isLoading ? <Skeleton rows={2}/> : conversations.isError ? <QueryError error={conversations.error} retry={() => void conversations.refetch()}/> : !conversations.data?.length ? <p className="text-xs leading-5 text-muted-foreground">When a conversation leaves you with something worth keeping, save its summary from the reflection space.</p> : <div className="space-y-3">{conversations.data.filter(c => c.summary).map(c => <div key={c.id} className="border-t border-border pt-3" data-testid={`summary-conversation-${c.id}`}><p className="text-[11px] font-semibold">{c.title}</p><p className="mt-1 text-[11px] leading-5 text-muted-foreground">{c.summary}</p></div>)}{conversations.data.every(c => !c.summary) && <p className="text-xs text-muted-foreground">No summaries saved yet. The good bits can wait.</p>}</div>}</div>
+        <div className="rounded-2xl border border-border bg-card p-5"><div className="mb-4 flex items-center justify-between"><div><p className="mono-label text-[9px] text-muted-foreground">TEST EVIDENCE</p><h2 className="serif-display mt-1 text-[23px]">Patterns over time</h2></div><CheckCircle2 size={17} className="text-primary"/></div>{assessments.isLoading ? <Skeleton rows={2}/> : assessments.isError ? <QueryError error={assessments.error} retry={() => void assessments.refetch()}/> : !assessments.data?.some(result => (result.kind === 'riasec' || result.kind === 'ipip') && !result.verificationRun) ? <p className="text-xs leading-5 text-muted-foreground">Complete either test to add its exploratory score pattern here.{assessments.data?.some(result => result.verificationRun) ? ' QA sample runs remain in test history, not your profile.' : ''}</p> : <div className="space-y-3">{assessments.data.filter(result => (result.kind === 'riasec' || result.kind === 'ipip') && !result.verificationRun).slice(0, 4).map(result => <div key={result.id} className="border-t border-border pt-3"><p className="text-[10px] font-semibold">{result.kind === 'riasec' ? 'RIASEC interest pattern' : 'Big Five work-style pattern'} · {dateLabel(result.completedAt)}</p><p className="mt-1 text-[10px] leading-5 text-muted-foreground">{result.scores.map(score => `${score.trait} ${score.score}/50`).join(' · ')}</p></div>)}</div>}<Link href="/tests" className="mt-4 inline-block text-[10px] font-semibold text-primary underline underline-offset-4">Open Tests</Link></div>
         <div className="rounded-xl bg-[hsl(152_24%_91%)] p-4"><p className="serif-display text-[20px]">No career is one neat sentence.</p><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Keep the contradictions. They’re often where the interesting options live.</p></div>
       </aside>
     </div>}
@@ -257,6 +272,7 @@ function Router() {
   return <ErrorBoundary resetKey={location}><Shell><Switch>
     <Route path="/" component={HomePage}/>
     <Route path="/assessments" component={AssessmentsPage}/>
+    <Route path="/tests" component={TestsPage}/>
     <Route path="/profile" component={ProfilePage}/>
     <Route path="/recommendations" component={RecommendationsPage}/>
     <Route component={NotFound}/>

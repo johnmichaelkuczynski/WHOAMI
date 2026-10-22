@@ -9,4 +9,6 @@ import type { AssessmentStartInputKind } from './assessmentStartInputKind';
 
 export interface AssessmentStartInput {
   kind: AssessmentStartInputKind;
+  /** Development-only marker used to keep QA answers out of the evolving profile. */
+  verificationRun?: boolean;
 }

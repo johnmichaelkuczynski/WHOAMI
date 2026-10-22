@@ -11,5 +11,6 @@ import type { AssessmentSessionKind } from './assessmentSessionKind';
 export interface AssessmentSession {
   id: number;
   kind: AssessmentSessionKind;
+  verificationRun: boolean;
   questions: AssessmentQuestion[];
 }

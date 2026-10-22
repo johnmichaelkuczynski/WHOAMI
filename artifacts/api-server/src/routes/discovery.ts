@@ -7,7 +7,9 @@ import {
   careerMessagesTable,
   careerProfilesTable,
   careerRecommendationsTable,
+  type AssessmentKind,
   type AssessmentQuestion,
+  type TraitScore,
   type CareerProfile,
 } from "@workspace/db";
 import {
@@ -42,6 +44,7 @@ import {
   createRecommendations,
   reflectOnMessage,
   scoreAssessment,
+  synthesizeProfileFromEvidence,
   summarizeReflection,
 } from "../lib/career-ai";
 
@@ -183,7 +186,7 @@ router.post("/discovery/conversations/:id/messages", async (req, res): Promise<v
   }
   const proposalRequired = assistantTurnsSinceProposal >= 2;
   const profile = await getOrCreateProfile();
-  const [savedReflections, recentUserMessages] = await Promise.all([
+  const [savedReflections, recentUserMessages, recentAssessments] = await Promise.all([
     db
       .select({
         title: careerConversationsTable.title,
@@ -211,6 +214,21 @@ router.post("/discovery/conversations/:id/messages", async (req, res): Promise<v
       )
       .orderBy(desc(careerMessagesTable.createdAt))
       .limit(8),
+    db
+      .select({
+        kind: careerAssessmentsTable.kind,
+        scores: careerAssessmentsTable.scores,
+        completedAt: careerAssessmentsTable.completedAt,
+      })
+      .from(careerAssessmentsTable)
+      .where(
+        and(
+          isNotNull(careerAssessmentsTable.completedAt),
+          eq(careerAssessmentsTable.verificationRun, false),
+        ),
+      )
+      .orderBy(desc(careerAssessmentsTable.completedAt))
+      .limit(8),
   ]);
   const memoryContext = JSON.stringify({
     profile: profileSnapshot(profile),
@@ -222,6 +240,7 @@ router.post("/discovery/conversations/:id/messages", async (req, res): Promise<v
       title,
       content: content.slice(0, 500),
     })),
+    recentExploratoryAssessments: recentAssessments,
   });
   let reply: string;
   try {
@@ -322,8 +341,11 @@ router.get("/discovery/assessments", async (_req, res): Promise<void> => {
     .select({
       id: careerAssessmentsTable.id,
       kind: careerAssessmentsTable.kind,
+      questions: careerAssessmentsTable.questions,
+      answers: careerAssessmentsTable.answers,
       scores: careerAssessmentsTable.scores,
       completedAt: careerAssessmentsTable.completedAt,
+      verificationRun: careerAssessmentsTable.verificationRun,
     })
     .from(careerAssessmentsTable)
     .where(isNotNull(careerAssessmentsTable.completedAt))
@@ -337,23 +359,41 @@ router.post("/discovery/assessments/start", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  const previousQuestions =
+    parsed.data.kind === "riasec" || parsed.data.kind === "ipip"
+      ? (
+          await db
+            .select({ questions: careerAssessmentsTable.questions })
+            .from(careerAssessmentsTable)
+            .where(eq(careerAssessmentsTable.kind, parsed.data.kind))
+        ).flatMap((assessment) => assessment.questions)
+      : [];
   let questions: AssessmentQuestion[];
   try {
-    questions = await createAssessmentQuestions(parsed.data.kind);
+    questions = await createAssessmentQuestions(parsed.data.kind, previousQuestions);
   } catch (error) {
     logAiError(req, error);
     res.status(502).json({ error: "The assessment could not be prepared. Please try again." });
     return;
   }
+  const verificationRun =
+    parsed.data.verificationRun === true && process.env.NODE_ENV !== "production";
   const [session] = await db
     .insert(careerAssessmentsTable)
-    .values({ kind: parsed.data.kind, questions, answers: [], scores: [] })
+    .values({
+      kind: parsed.data.kind,
+      questions,
+      answers: [],
+      scores: [],
+      verificationRun,
+    })
     .returning();
   res.status(201).json(
     StartAssessmentResponse.parse({
       id: session.id,
       kind: session.kind,
       questions: session.questions,
+      verificationRun: session.verificationRun,
     }),
   );
 });
@@ -392,19 +432,90 @@ router.post("/discovery/assessments/:id/submit", async (req, res): Promise<void>
     res.status(400).json({ error: "Answer every question once before submitting." });
     return;
   }
-  const scores = scoreAssessment(assessment.questions, answers);
+  const scores = scoreAssessment(assessment.questions, answers, assessment.kind as AssessmentKind);
   const completedAt = new Date();
   const [updated] = await db
     .update(careerAssessmentsTable)
     .set({ answers, scores, completedAt })
     .where(eq(careerAssessmentsTable.id, assessment.id))
     .returning();
+  let profileUpdated = false;
+  if (!updated.verificationRun) {
+    const profile = await getOrCreateProfile();
+    const [savedConversationSummaries, completedAssessments] = await Promise.all([
+      db
+        .select({
+          title: careerConversationsTable.title,
+          summary: careerConversationsTable.summary,
+        })
+        .from(careerConversationsTable)
+        .where(isNotNull(careerConversationsTable.summary))
+        .orderBy(desc(careerConversationsTable.updatedAt))
+        .limit(8),
+      db
+        .select({
+          kind: careerAssessmentsTable.kind,
+          scores: careerAssessmentsTable.scores,
+          completedAt: careerAssessmentsTable.completedAt,
+        })
+        .from(careerAssessmentsTable)
+        .where(
+          and(
+            isNotNull(careerAssessmentsTable.completedAt),
+            eq(careerAssessmentsTable.verificationRun, false),
+          ),
+        )
+        .orderBy(desc(careerAssessmentsTable.completedAt))
+        .limit(8),
+    ]);
+    let profileUpdate: Pick<
+      CareerProfile,
+      "summary" | "strengths" | "interests" | "workPreferences"
+    >;
+    try {
+      profileUpdate = await synthesizeProfileFromEvidence(
+        profile,
+        savedConversationSummaries,
+        completedAssessments.map((item) => ({
+          ...item,
+          kind: item.kind as AssessmentKind,
+        })),
+      );
+    } catch (error) {
+      logAiError(req, error);
+      const scoreNote = `Exploratory ${assessment.kind} scores (${scores
+        .map((score) => `${score.trait}: ${score.score}`)
+        .join(", ")}). This is a reflection signal, not a measure of ability.`;
+      profileUpdate = {
+        summary: [profile.summary.trim(), scoreNote].filter(Boolean).join("\n\n"),
+        strengths: profile.strengths,
+        interests:
+          assessment.kind === "riasec"
+            ? [...new Set([...profile.interests, ...scores.slice(0, 3).map((score) => `${score.trait} interest`)])].slice(0, 8)
+            : profile.interests,
+        workPreferences:
+          assessment.kind === "ipip"
+            ? [...new Set([...profile.workPreferences, ...scores.slice(0, 2).map((score) => `${score.trait} pattern`)])].slice(0, 8)
+            : profile.workPreferences,
+      };
+    }
+    const [updatedProfile] = await db
+      .update(careerProfilesTable)
+      .set({ ...profileUpdate, updatedAt: new Date() })
+      .where(eq(careerProfilesTable.id, profile.id))
+      .returning();
+    profileUpdated = Boolean(updatedProfile);
+  }
   res.status(201).json(
     SubmitAssessmentResponse.parse({
       id: updated.id,
       kind: updated.kind,
+      questions: updated.questions,
+      answers: updated.answers,
       scores: updated.scores,
       completedAt: updated.completedAt,
+      verificationRun: updated.verificationRun,
+      profileUpdated,
     }),
   );
 });
@@ -473,7 +584,12 @@ router.get("/discovery/dashboard", async (_req, res): Promise<void> => {
     db
       .select({ count: count() })
       .from(careerAssessmentsTable)
-      .where(isNotNull(careerAssessmentsTable.completedAt)),
+      .where(
+        and(
+          isNotNull(careerAssessmentsTable.completedAt),
+          eq(careerAssessmentsTable.verificationRun, false),
+        ),
+      ),
     db
       .select({ count: count() })
       .from(careerRecommendationsTable)
@@ -492,7 +608,12 @@ router.get("/discovery/dashboard", async (_req, res): Promise<void> => {
     db
       .select({ kind: careerAssessmentsTable.kind, createdAt: careerAssessmentsTable.completedAt })
       .from(careerAssessmentsTable)
-      .where(isNotNull(careerAssessmentsTable.completedAt))
+      .where(
+        and(
+          isNotNull(careerAssessmentsTable.completedAt),
+          eq(careerAssessmentsTable.verificationRun, false),
+        ),
+      )
       .orderBy(desc(careerAssessmentsTable.completedAt))
       .limit(4),
     db
@@ -512,7 +633,14 @@ router.get("/discovery/dashboard", async (_req, res): Promise<void> => {
         ? [
             {
               kind: "assessment" as const,
-              label: item.kind === "interests" ? "Interest reflection completed" : "Work-style reflection completed",
+              label:
+                item.kind === "riasec"
+                  ? "RIASEC interest test completed"
+                  : item.kind === "ipip"
+                    ? "Big Five work-style test completed"
+                    : item.kind === "interests"
+                      ? "Interest reflection completed"
+                      : "Work-style reflection completed",
               createdAt: item.createdAt,
             },
           ]

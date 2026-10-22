@@ -1,5 +1,6 @@
 import { openai } from "@workspace/integrations-openai-ai-server";
-import type { AssessmentQuestion, TraitScore } from "@workspace/db";
+import { randomUUID } from "node:crypto";
+import type { AssessmentKind, AssessmentQuestion, CareerProfile, TraitScore } from "@workspace/db";
 
 const MODEL = "gpt-5.6-terra";
 
@@ -102,8 +103,12 @@ export async function summarizeReflection(
 }
 
 export async function createAssessmentQuestions(
-  kind: "interests" | "personality",
+  kind: AssessmentKind,
+  previousQuestions: AssessmentQuestion[] = [],
 ): Promise<AssessmentQuestion[]> {
+  if (kind === "riasec" || kind === "ipip") {
+    return createLongAssessmentQuestions(kind, previousQuestions);
+  }
   const traitList =
     kind === "interests"
       ? ["Realistic", "Investigative", "Artistic", "Social", "Enterprising", "Conventional"]
@@ -142,6 +147,199 @@ export async function createAssessmentQuestions(
   return questions;
 }
 
+const RIASEC_TRAITS = [
+  "Realistic",
+  "Investigative",
+  "Artistic",
+  "Social",
+  "Enterprising",
+  "Conventional",
+] as const;
+const IPIP_TRAITS = [
+  "Extraversion",
+  "Agreeableness",
+  "Conscientiousness",
+  "Emotional Stability",
+  "Intellect/Imagination",
+] as const;
+const COMMON_WORDS = new Set([
+  "about", "after", "again", "also", "always", "being", "could", "doing", "during",
+  "each", "from", "have", "into", "just", "more", "most", "much", "often", "other",
+  "really", "some", "than", "that", "their", "them", "there", "these", "they", "this",
+  "through", "very", "want", "when", "where", "which", "while", "would", "your",
+]);
+
+function meaningfulTerms(prompt: string): Set<string> {
+  return new Set(
+    prompt
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((word) => word.length > 3 && !COMMON_WORDS.has(word)),
+  );
+}
+
+function promptSimilarity(left: string, right: string): number {
+  const a = meaningfulTerms(left);
+  const b = meaningfulTerms(right);
+  if (!a.size || !b.size) return 0;
+  const intersection = [...a].filter((word) => b.has(word)).length;
+  return intersection / new Set([...a, ...b]).size;
+}
+
+async function createLongAssessmentQuestions(
+  kind: "riasec" | "ipip",
+  previousQuestions: AssessmentQuestion[],
+): Promise<AssessmentQuestion[]> {
+  const traits = kind === "riasec" ? RIASEC_TRAITS : IPIP_TRAITS;
+  const itemsPerTrait = 10;
+  const totalItems = traits.length * itemsPerTrait;
+  const history = previousQuestions
+    .map((question) => `${question.trait}: ${question.prompt}`)
+    .join("\n");
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const retryInstruction =
+      attempt === 0
+        ? ""
+        : " Your previous draft failed the exact-count, keying, or duplicate checks. Produce a fully new corrected set.";
+    try {
+      const result = await completeJson<{ questions?: unknown }>(
+        "You write original, concise assessment statements. Follow counts and labels exactly. Return only valid JSON.",
+        kind === "riasec"
+          ? `Generate exactly ${totalItems} original work-activity items for an exploratory RIASEC interest reflection. Create exactly 10 items for each trait: ${traits.join(", ")}. Every item must describe a concrete work activity and ask how much the person would enjoy doing it. Do not ask about skill, confidence, or ability. Use these labels exactly. Do not copy official O*NET or published instrument wording. Every prompt must be distinct and must not repeat or closely paraphrase any prior prompt listed below. Return {"questions":[{"prompt":"...","trait":"..."}]}. Prior prompts to avoid:\n${history || "(none)"}${retryInstruction}`
+          : `Generate exactly ${totalItems} original first-person work-style statements for an exploratory Big Five reflection. Create exactly 10 items for each trait: ${traits.join(", ")}. For each trait, create exactly 5 positive-keyed items and 5 reverse-keyed items. Positive-keyed statements express more of that trait; reverse-keyed statements express less of it. Use keying values "positive" and "reverse", and use the trait labels exactly as listed. Keep statements clear, single-idea, and answerable as "Very Inaccurate" through "Very Accurate". Do not copy the wording of official or published IPIP questions. Every prompt must be distinct and must not repeat or closely paraphrase any prior prompt listed below. Return {"questions":[{"prompt":"...","trait":"...","keying":"positive"}]}. Prior prompts to avoid:\n${history || "(none)"}${retryInstruction}`,
+      );
+      if (!Array.isArray(result.questions) || result.questions.length !== totalItems) {
+        throw new Error(`Expected exactly ${totalItems} assessment items.`);
+      }
+
+      const byTrait = new Map<string, AssessmentQuestion[]>(
+        traits.map((trait) => [trait, []]),
+      );
+      const normalizedQuestions: AssessmentQuestion[] = [];
+      for (const candidate of result.questions) {
+        if (!candidate || typeof candidate !== "object") {
+          throw new Error("The AI returned an invalid assessment item.");
+        }
+        const item = candidate as Record<string, unknown>;
+        const trait = traits.find(
+          (value) => value.toLowerCase() === String(item.trait).toLowerCase(),
+        );
+        if (!trait || typeof item.prompt !== "string" || item.prompt.trim().length < 20) {
+          throw new Error("The AI returned an item with an invalid trait or prompt.");
+        }
+        const keying = kind === "ipip" ? item.keying : undefined;
+        if (kind === "ipip" && keying !== "positive" && keying !== "reverse") {
+          throw new Error("Every Big Five item must have valid keying.");
+        }
+        if (kind === "riasec" && "keying" in item) {
+          throw new Error("RIASEC interest items must not include personality keying.");
+        }
+        const question: AssessmentQuestion = {
+          id: randomUUID(),
+          prompt: item.prompt.trim(),
+          trait,
+          ...(kind === "ipip" ? { keying: keying as "positive" | "reverse" } : {}),
+        };
+        byTrait.get(trait)?.push(question);
+        normalizedQuestions.push(question);
+      }
+
+      for (const trait of traits) {
+        const items = byTrait.get(trait) ?? [];
+        if (items.length !== itemsPerTrait) {
+          throw new Error(`Expected ${itemsPerTrait} items for ${trait}.`);
+        }
+        if (
+          kind === "ipip" &&
+          (items.filter((item) => item.keying === "positive").length !== 5 ||
+            items.filter((item) => item.keying === "reverse").length !== 5)
+        ) {
+          throw new Error(`${trait} needs five positive and five reverse-keyed items.`);
+        }
+      }
+
+      for (let index = 0; index < normalizedQuestions.length; index += 1) {
+        const question = normalizedQuestions[index];
+        if (normalizedQuestions.slice(0, index).some(
+          (previous) => promptSimilarity(question.prompt, previous.prompt) >= 0.68,
+        )) {
+          throw new Error("The AI returned duplicate or closely phrased items.");
+        }
+        if (previousQuestions.some(
+          (previous) =>
+            previous.trait === question.trait &&
+            promptSimilarity(question.prompt, previous.prompt) >= 0.56,
+        )) {
+          throw new Error("The AI reused or closely reworded a previous item.");
+        }
+      }
+
+      return traits.flatMap((trait) =>
+        (byTrait.get(trait) ?? []).sort((a, b) =>
+          (a.keying ?? "").localeCompare(b.keying ?? ""),
+        ),
+      );
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Unable to generate a valid assessment.");
+}
+
+export async function synthesizeProfileFromEvidence(
+  current: CareerProfile,
+  savedConversationSummaries: Array<{ title: string; summary: string | null }>,
+  completedAssessments: Array<{
+    kind: AssessmentKind;
+    scores: TraitScore[];
+    completedAt: Date | null;
+  }>,
+): Promise<Pick<CareerProfile, "summary" | "strengths" | "interests" | "workPreferences">> {
+  const result = await completeJson<{
+    summary?: unknown;
+    strengths?: unknown;
+    interests?: unknown;
+    workPreferences?: unknown;
+  }>(
+    "You maintain a careful, evidence-based career profile. Return only JSON. Distinguish reported experience from exploratory test patterns; do not present personality or interest scores as aptitude or certainty.",
+    `Update this evolving profile using the existing profile, saved chat summaries, and assessment scores. Preserve useful user-provided details. When evidence supports it, explicitly identify whether a point comes from a saved conversation or an exploratory assessment. Note apparent tensions between interests and work style without declaring one score to be a skill. Do not invent evidence. Keep summary concise (2-4 sentences), and each list to at most 8 short entries.\nExisting profile: ${JSON.stringify({
+      summary: current.summary,
+      strengths: current.strengths,
+      interests: current.interests,
+      workPreferences: current.workPreferences,
+    })}\nSaved conversation summaries: ${JSON.stringify(
+      savedConversationSummaries
+        .filter((item) => item.summary)
+        .map((item) => ({ title: item.title, summary: item.summary?.slice(0, 1000) })),
+    )}\nCompleted exploratory assessments: ${JSON.stringify(
+      completedAssessments.map((item) => ({
+        kind: item.kind,
+        scores: item.scores,
+        completedAt: item.completedAt?.toISOString() ?? null,
+      })),
+    )}\nReturn {"summary":"...","strengths":["..."],"interests":["..."],"workPreferences":["..."]}.`,
+  );
+  const asList = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? value.filter((entry): entry is string => typeof entry === "string").slice(0, 8)
+      : [];
+  return {
+    summary:
+      typeof result.summary === "string" && result.summary.trim()
+        ? result.summary.trim()
+        : current.summary,
+    strengths: asList(result.strengths),
+    interests: asList(result.interests),
+    workPreferences: asList(result.workPreferences),
+  };
+}
+
 export async function createRecommendations(
   profile: ProfileSnapshot,
 ): Promise<Array<{ kind: "book" | "activity"; title: string; reason: string }>> {
@@ -172,6 +370,7 @@ export async function createRecommendations(
 export function scoreAssessment(
   questions: AssessmentQuestion[],
   answers: Array<{ questionId: string; score: number }>,
+  kind: AssessmentKind = "interests",
 ): TraitScore[] {
   const questionById = new Map(questions.map((question) => [question.id, question]));
   const totals = new Map<string, { sum: number; count: number }>();
@@ -179,14 +378,25 @@ export function scoreAssessment(
     const question = questionById.get(answer.questionId);
     if (!question) continue;
     const value = totals.get(question.trait) ?? { sum: 0, count: 0 };
-    value.sum += answer.score;
+    value.sum += kind === "ipip" && question.keying === "reverse" ? 6 - answer.score : answer.score;
     value.count += 1;
     totals.set(question.trait, value);
   }
+  const scaleOrder: string[] =
+    kind === "riasec" ? [...RIASEC_TRAITS] : kind === "ipip" ? [...IPIP_TRAITS] : [];
   return [...totals.entries()]
     .map(([trait, value]) => ({
       trait,
-      score: Math.round(((value.sum / value.count - 1) / 4) * 100),
+      score:
+        kind === "riasec" || kind === "ipip"
+          ? value.sum
+          : Math.round(((value.sum / value.count - 1) / 4) * 100),
     }))
-    .sort((a, b) => b.score - a.score);
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        (scaleOrder.length > 0
+          ? scaleOrder.indexOf(a.trait) - scaleOrder.indexOf(b.trait)
+          : 0),
+    );
 }

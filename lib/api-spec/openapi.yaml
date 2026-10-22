@@ -337,7 +337,10 @@ components:
       type: object
       required: [kind]
       properties:
-        kind: { type: string, enum: [interests, personality] }
+        kind: { type: string, enum: [interests, personality, riasec, ipip] }
+        verificationRun:
+          type: boolean
+          description: Development-only marker used to keep QA answers out of the evolving profile.
     AssessmentQuestion:
       type: object
       required: [id, prompt, trait]
@@ -345,12 +348,14 @@ components:
         id: { type: string }
         prompt: { type: string }
         trait: { type: string }
+        keying: { type: string, enum: [positive, reverse] }
     AssessmentSession:
       type: object
-      required: [id, kind, questions]
+      required: [id, kind, questions, verificationRun]
       properties:
         id: { type: integer }
-        kind: { type: string, enum: [interests, personality] }
+        kind: { type: string, enum: [interests, personality, riasec, ipip] }
+        verificationRun: { type: boolean }
         questions:
           type: array
           items: { $ref: "#/components/schemas/AssessmentQuestion" }
@@ -375,10 +380,18 @@ components:
         score: { type: number, minimum: 0, maximum: 100 }
     AssessmentResult:
       type: object
-      required: [id, kind, scores, completedAt]
+      required: [id, kind, questions, answers, scores, completedAt, verificationRun]
       properties:
         id: { type: integer }
-        kind: { type: string, enum: [interests, personality] }
+        kind: { type: string, enum: [interests, personality, riasec, ipip] }
+        verificationRun: { type: boolean }
+        profileUpdated: { type: boolean }
+        questions:
+          type: array
+          items: { $ref: "#/components/schemas/AssessmentQuestion" }
+        answers:
+          type: array
+          items: { $ref: "#/components/schemas/AssessmentAnswer" }
         scores:
           type: array
           items: { $ref: "#/components/schemas/TraitScore" }

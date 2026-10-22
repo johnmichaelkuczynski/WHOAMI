@@ -5,12 +5,18 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AssessmentAnswer } from './assessmentAnswer';
+import type { AssessmentQuestion } from './assessmentQuestion';
 import type { AssessmentResultKind } from './assessmentResultKind';
 import type { TraitScore } from './traitScore';
 
 export interface AssessmentResult {
   id: number;
   kind: AssessmentResultKind;
+  verificationRun: boolean;
+  profileUpdated?: boolean;
+  questions: AssessmentQuestion[];
+  answers: AssessmentAnswer[];
   scores: TraitScore[];
   completedAt: Date;
 }

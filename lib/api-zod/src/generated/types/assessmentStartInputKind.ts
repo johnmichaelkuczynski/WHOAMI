@@ -12,4 +12,6 @@ export type AssessmentStartInputKind = typeof AssessmentStartInputKind[keyof typ
 export const AssessmentStartInputKind = {
   interests: 'interests',
   personality: 'personality',
+  riasec: 'riasec',
+  ipip: 'ipip',
 } as const;

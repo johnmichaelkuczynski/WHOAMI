@@ -9,6 +9,7 @@
 export * from './assessmentAnswer';
 export * from './assessmentAnswers';
 export * from './assessmentQuestion';
+export * from './assessmentQuestionKeying';
 export * from './assessmentResult';
 export * from './assessmentResultKind';
 export * from './assessmentSession';

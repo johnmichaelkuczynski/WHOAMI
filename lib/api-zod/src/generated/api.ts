@@ -179,6 +179,8 @@ export const SummarizeCareerConversationResponse = zod.object({
 /**
  * @summary List saved assessment scores
  */
+export const listAssessmentResultsResponseAnswersItemScoreMax = 5;
+
 export const listAssessmentResultsResponseScoresItemScoreMin = 0;
 export const listAssessmentResultsResponseScoresItemScoreMax = 100;
 
@@ -186,7 +188,19 @@ export const listAssessmentResultsResponseScoresItemScoreMax = 100;
 
 export const ListAssessmentResultsResponseItem = zod.object({
   "id": zod.number().int(),
-  "kind": zod.enum(['interests', 'personality']),
+  "kind": zod.enum(['interests', 'personality', 'riasec', 'ipip']),
+  "verificationRun": zod.boolean(),
+  "profileUpdated": zod.boolean().optional(),
+  "questions": zod.array(zod.object({
+  "id": zod.string(),
+  "prompt": zod.string(),
+  "trait": zod.string(),
+  "keying": zod.enum(['positive', 'reverse']).optional()
+})),
+  "answers": zod.array(zod.object({
+  "questionId": zod.string(),
+  "score": zod.number().int().min(1).max(listAssessmentResultsResponseAnswersItemScoreMax)
+})),
   "scores": zod.array(zod.object({
   "trait": zod.string(),
   "score": zod.number().min(listAssessmentResultsResponseScoresItemScoreMin).max(listAssessmentResultsResponseScoresItemScoreMax)
@@ -200,16 +214,19 @@ export const ListAssessmentResultsResponse = zod.array(ListAssessmentResultsResp
  * @summary Create a rotating exploratory assessment
  */
 export const StartAssessmentBody = zod.object({
-  "kind": zod.enum(['interests', 'personality'])
+  "kind": zod.enum(['interests', 'personality', 'riasec', 'ipip']),
+  "verificationRun": zod.boolean().optional().describe('Development-only marker used to keep QA answers out of the evolving profile.')
 })
 
 export const StartAssessmentResponse = zod.object({
   "id": zod.number().int(),
-  "kind": zod.enum(['interests', 'personality']),
+  "kind": zod.enum(['interests', 'personality', 'riasec', 'ipip']),
+  "verificationRun": zod.boolean(),
   "questions": zod.array(zod.object({
   "id": zod.string(),
   "prompt": zod.string(),
-  "trait": zod.string()
+  "trait": zod.string(),
+  "keying": zod.enum(['positive', 'reverse']).optional()
 }))
 })
 
@@ -232,6 +249,8 @@ export const SubmitAssessmentBody = zod.object({
 }))
 })
 
+export const submitAssessmentResponseAnswersItemScoreMax = 5;
+
 export const submitAssessmentResponseScoresItemScoreMin = 0;
 export const submitAssessmentResponseScoresItemScoreMax = 100;
 
@@ -239,7 +258,19 @@ export const submitAssessmentResponseScoresItemScoreMax = 100;
 
 export const SubmitAssessmentResponse = zod.object({
   "id": zod.number().int(),
-  "kind": zod.enum(['interests', 'personality']),
+  "kind": zod.enum(['interests', 'personality', 'riasec', 'ipip']),
+  "verificationRun": zod.boolean(),
+  "profileUpdated": zod.boolean().optional(),
+  "questions": zod.array(zod.object({
+  "id": zod.string(),
+  "prompt": zod.string(),
+  "trait": zod.string(),
+  "keying": zod.enum(['positive', 'reverse']).optional()
+})),
+  "answers": zod.array(zod.object({
+  "questionId": zod.string(),
+  "score": zod.number().int().min(1).max(submitAssessmentResponseAnswersItemScoreMax)
+})),
   "scores": zod.array(zod.object({
   "trait": zod.string(),
   "score": zod.number().min(submitAssessmentResponseScoresItemScoreMin).max(submitAssessmentResponseScoresItemScoreMax)

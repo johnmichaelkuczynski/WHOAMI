@@ -12,4 +12,6 @@ export type AssessmentSessionKind = typeof AssessmentSessionKind[keyof typeof As
 export const AssessmentSessionKind = {
   interests: 'interests',
   personality: 'personality',
+  riasec: 'riasec',
+  ipip: 'ipip',
 } as const;

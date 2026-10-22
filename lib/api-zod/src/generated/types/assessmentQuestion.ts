@@ -5,9 +5,11 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AssessmentQuestionKeying } from './assessmentQuestionKeying';
 
 export interface AssessmentQuestion {
   id: string;
   prompt: string;
   trait: string;
+  keying?: AssessmentQuestionKeying;
 }
