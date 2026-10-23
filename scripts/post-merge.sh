@@ -1,4 +1,8 @@
 #!/bin/bash
-set -e
-pnpm install --frozen-lockfile
-pnpm --filter db push
+set -euo pipefail
+
+# Parallel task merges can change package manifests and the lockfile separately.
+pnpm install --no-frozen-lockfile
+
+# Apply additive schema updates; never force destructive migration decisions.
+pnpm --filter @workspace/db --fail-if-no-match run push
