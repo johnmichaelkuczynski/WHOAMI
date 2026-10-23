@@ -1,1 +1,1 @@
-- [Who Am I? scope](who-am-i-scope.md) — Single-user career exploration; rotating assessment scores are exploratory, not official O*NET/IPIP results.
+- [Who Am I? scope](who-am-i-scope.md) — Google-account privacy, always-authenticated development access, practical proposals, and exploratory assessment limits.
