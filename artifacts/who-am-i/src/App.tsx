@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import {
   Activity, ArrowDownToLine, ArrowRight, BookOpen, Check, CheckCircle2,
   ChevronLeft, ChevronRight, Compass, FileText, Heart, Lightbulb, Mic, MicOff,
@@ -18,13 +18,13 @@ import {
 } from '@workspace/api-client-react';
 import type { AssessmentSession, CareerRecommendation } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { createQueryClient } from '@/lib/query-client';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import TestsPage from '@/pages/tests';
 import AuthGate, { useAuth } from '@/components/auth-gate';
-
-const queryClient = new QueryClient();
+const queryClient = createQueryClient();
 const navItems = [
   { href: '/', label: 'Conversation' },
   { href: '/assessments', label: 'Diagnostic tests' },
