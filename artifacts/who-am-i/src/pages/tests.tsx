@@ -23,8 +23,8 @@ const RIASEC_RATINGS = ["Strongly dislike", "Dislike", "Neutral", "Like", "Stron
 const IPIP_RATINGS = ["Very inaccurate", "Somewhat inaccurate", "Neither", "Somewhat accurate", "Very accurate"];
 
 function labelForKind(kind: string) {
-  if (kind === "riasec") return "O*NET Interest Profiler style";
-  if (kind === "ipip") return "IPIP Big Five style";
+  if (kind === "riasec") return "Career interests test (RIASEC)";
+  if (kind === "ipip") return "Personality test (IPIP Big Five)";
   if (kind === "interests") return "Career interests check-in";
   return "Work style check-in";
 }
@@ -229,12 +229,11 @@ function ScoreHistory({ results }: { results: AssessmentResult[] }) {
                 {labelForKind(result.kind)} · {dateLabel(result.completedAt)}
                 {result.verificationRun ? " · QA sample" : ""}
                 <span className="ml-2 font-normal text-muted-foreground">
-                  Show all {result.questions.length} generated items and answers
+                  View full report, all {result.questions.length} questions and answers
                 </span>
               </summary>
-              <AssessmentDownloads result={result} />
               <div className="mt-4 space-y-3 border-t border-border pt-4">
-                <ScoreRows result={result} />
+                <ResultSummary result={result} />
                 {result.questions.map((question, index) => {
                   const answer = result.answers.find((entry) => entry.questionId === question.id);
                   return (
@@ -271,6 +270,12 @@ export default function TestsPage() {
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [error, setError] = useState("");
   const [verificationRun, setVerificationRun] = useState(false);
+  const latestSavedResults = (["riasec", "ipip"] as const).flatMap((kind) => {
+    const latest = (history.data ?? [])
+      .filter((saved) => saved.kind === kind && !saved.verificationRun)
+      .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime())[0];
+    return latest && latest.id !== result?.id ? [latest] : [];
+  });
 
   const ratings = session?.kind === "riasec" ? RIASEC_RATINGS : IPIP_RATINGS;
   const pageSize = 10;
@@ -541,6 +546,18 @@ export default function TestsPage() {
       )}
 
       {result && <div className="mt-5"><ResultSummary result={result} /></div>}
+      {!session && latestSavedResults.length > 0 && (
+        <section className="mt-8 space-y-4" aria-label="Latest saved test reports">
+          <div>
+            <p className="mono-label text-[9px] text-muted-foreground">YOUR SAVED REPORTS</p>
+            <h2 className="serif-display mt-1 text-[27px]">Latest completed tests</h2>
+            <p className="mt-2 text-xs text-muted-foreground">
+              The RIASEC career interests test is the O*NET-style interest test—not a separate test.
+            </p>
+          </div>
+          {latestSavedResults.map((saved) => <ResultSummary key={saved.id} result={saved} />)}
+        </section>
+      )}
       {history.isLoading && <div className="mt-8 animate-pulse rounded-xl border border-border bg-card p-5 text-xs text-muted-foreground">Loading saved scores…</div>}
       {!history.isLoading && !history.isError && <ScoreHistory results={history.data ?? []} />}
     </div>
