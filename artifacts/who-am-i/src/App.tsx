@@ -10,7 +10,7 @@ import {
   getGetCareerProfileQueryKey, getGetDiscoveryDashboardQueryKey,
   getListAssessmentResultsQueryKey, getListCareerConversationsQueryKey,
   getListCareerMessagesQueryKey, getListCareerRecommendationsQueryKey,
-  useCreateCareerConversation, useGenerateCareerRecommendations,
+  useCreateCareerConversation, useGenerateCareerRecommendations, sendCareerMessage,
   useGetCareerProfile, useGetDiscoveryDashboard, useListAssessmentResults,
   useListCareerConversations, useListCareerMessages, useListCareerRecommendations,
   useSendCareerMessage, useStartAssessment, useSubmitAssessment,
@@ -19,6 +19,7 @@ import {
 import type { AssessmentSession, CareerRecommendation } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { AssessmentDownloads } from '@/components/assessment-downloads';
+import { retryChatRequest } from '@/lib/chat-request';
 import { createQueryClient } from '@/lib/query-client';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -121,7 +122,15 @@ function HomePage() {
   const active = conversationList.find(c => c.id === activeId) ?? conversationList[0];
   const activeConversationId = active?.id;
   const messages = useListCareerMessages(activeConversationId as number, { query: { enabled: !!activeConversationId, queryKey: getListCareerMessagesQueryKey(activeConversationId as number) } });
-  const send = useSendCareerMessage();
+  const pendingRequestRef = useRef<{ id: number; content: string; key: string } | null>(null);
+  const send = useSendCareerMessage({
+    mutation: {
+      mutationFn: ({ id, data }) => sendCareerMessage(id, data, {
+        headers: { 'Idempotency-Key': pendingRequestRef.current!.key },
+        signal: AbortSignal.timeout(90_000),
+      }),
+    },
+  });
   const summarize = useSummarizeCareerConversation();
   const [draft, setDraft] = useState('');
   const [newTitle, setNewTitle] = useState('');
@@ -129,6 +138,7 @@ function HomePage() {
   const [notice, setNotice] = useState('');
   const [savedSummary, setSavedSummary] = useState('');
   const [recommendationNotice, setRecommendationNotice] = useState('');
+  const sendingRef = useRef(false);
   const [voiceState, setVoiceState] = useState<'idle' | 'recording' | 'transcribing'>('idle');
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -231,15 +241,34 @@ function HomePage() {
   const handleSend = async (event: FormEvent) => {
     event.preventDefault();
     const content = draft.trim();
-    if (!content || send.isPending) return;
-    setDraft(''); setNotice('');
+    if (!content || sendingRef.current) return;
+    sendingRef.current = true;
+    setNotice('');
     try {
       let conversation = active;
       if (!conversation) conversation = await startConversation(content.split(/[.!?]/)[0].slice(0, 48) || 'A new reflection');
-      const result = await send.mutateAsync({ id: conversation.id, data: { content } });
-      qc.setQueryData(getListCareerMessagesQueryKey(conversation.id), (old: typeof messages.data) => [...(old ?? []), result.userMessage, result.assistantMessage]);
+      if (pendingRequestRef.current?.id !== conversation.id || pendingRequestRef.current.content !== content) {
+        pendingRequestRef.current = { id: conversation.id, content, key: crypto.randomUUID() };
+      }
+      const result = await retryChatRequest(
+        () => send.mutateAsync({ id: conversation.id, data: { content } }),
+        () => setNotice('Connection interrupted. Reconnecting safely—your message is still here.'),
+      );
+      qc.setQueryData(getListCareerMessagesQueryKey(conversation.id), (old: typeof messages.data) => {
+        const additions = [result.userMessage, result.assistantMessage];
+        return [...(old ?? []).filter(message => !additions.some(next => next.id === message.id)), ...additions];
+      });
+      setDraft(current => current.trim() === content ? '' : current);
+      pendingRequestRef.current = null;
+      setNotice('');
       refresh();
-    } catch (error) { setDraft(content); setNotice(messageOf(error)); }
+    } catch (error) {
+      setNotice(error instanceof TypeError || (error instanceof Error && error.name === 'TimeoutError')
+        ? 'The connection could not be restored. Your message has been kept. Press Send to retry safely.'
+        : messageOf(error));
+    } finally {
+      sendingRef.current = false;
+    }
   };
   const exportChat = () => {
     const lines = (messages.data ?? []).map(m => `${m.role === 'user' ? 'You' : 'Who Am I?'}\n${m.content}`).join('\n\n');

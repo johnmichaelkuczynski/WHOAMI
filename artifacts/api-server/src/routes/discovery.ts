@@ -182,6 +182,27 @@ router.post("/discovery/conversations/:id/messages", async (req, res): Promise<v
     res.status(404).json({ error: "Conversation not found." });
     return;
   }
+  const requestKey = req.get("Idempotency-Key");
+  if (requestKey && !/^[a-zA-Z0-9-]{16,80}$/.test(requestKey)) {
+    res.status(400).json({ error: "Invalid message request identifier." });
+    return;
+  }
+  if (requestKey) {
+    const saved = await db.select().from(careerMessagesTable).where(and(
+      eq(careerMessagesTable.conversationId, conversation.id),
+      eq(careerMessagesTable.requestKey, requestKey),
+    ));
+    const userMessage = saved.find((message) => message.role === "user");
+    const assistantMessage = saved.find((message) => message.role === "assistant");
+    if (userMessage && assistantMessage) {
+      if (userMessage.content !== body.data.content) {
+        res.status(409).json({ error: "This request identifier belongs to a different message." });
+        return;
+      }
+      res.json(SendCareerMessageResponse.parse({ userMessage, assistantMessage }));
+      return;
+    }
+  }
   const messages = await db
     .select()
     .from(careerMessagesTable)
@@ -231,7 +252,7 @@ router.post("/discovery/conversations/:id/messages", async (req, res): Promise<v
       .orderBy(desc(careerMessagesTable.createdAt))
       .limit(8),
     db
-      .select({
+      .selectDistinctOn([careerAssessmentsTable.kind], {
         kind: careerAssessmentsTable.kind,
         scores: careerAssessmentsTable.scores,
         completedAt: careerAssessmentsTable.completedAt,
@@ -244,8 +265,7 @@ router.post("/discovery/conversations/:id/messages", async (req, res): Promise<v
           eq(careerAssessmentsTable.userId, userId),
         ),
       )
-      .orderBy(desc(careerAssessmentsTable.completedAt))
-      .limit(8),
+      .orderBy(careerAssessmentsTable.kind, desc(careerAssessmentsTable.completedAt)),
   ]);
   const memoryContext = JSON.stringify({
     profile: profileSnapshot(profile),
@@ -277,13 +297,25 @@ router.post("/discovery/conversations/:id/messages", async (req, res): Promise<v
     res.status(502).json({ error: "The AI could not respond just now. Please try again." });
     return;
   }
-  const [userMessage, assistantMessage] = await db
+  const insertedMessages = await db
     .insert(careerMessagesTable)
     .values([
-      { conversationId: conversation.id, role: "user", content: body.data.content },
-      { conversationId: conversation.id, role: "assistant", content: reply },
+      { conversationId: conversation.id, role: "user", content: body.data.content, requestKey },
+      { conversationId: conversation.id, role: "assistant", content: reply, requestKey },
     ])
+    .onConflictDoNothing()
     .returning();
+  const persistedMessages = insertedMessages.length === 2 ? insertedMessages : await db
+    .select().from(careerMessagesTable).where(and(
+      eq(careerMessagesTable.conversationId, conversation.id),
+      eq(careerMessagesTable.requestKey, requestKey!),
+    ));
+  const userMessage = persistedMessages.find((message) => message.role === "user");
+  const assistantMessage = persistedMessages.find((message) => message.role === "assistant");
+  if (!userMessage || !assistantMessage || userMessage.content !== body.data.content) {
+    res.status(409).json({ error: "The message could not be reconciled. Please reload this conversation before trying again." });
+    return;
+  }
   await db
     .update(careerConversationsTable)
     .set({

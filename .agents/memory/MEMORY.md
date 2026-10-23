@@ -1,1 +1,2 @@
 - [Who Am I? scope](who-am-i-scope.md) — Google-account privacy, always-authenticated development access, practical proposals, and exploratory assessment limits.
+- [Safe chat retries](safe-chat-retries.md) — lost responses must not cause duplicate saved exchanges; retry identities survive server restarts.

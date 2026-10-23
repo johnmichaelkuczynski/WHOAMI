@@ -34,7 +34,9 @@ export async function reflectOnMessage(
 
 Every response must do more than summarize or empathize. Privately identify the user's underlying bottleneck—the cause that is keeping the situation stuck—not merely restate their story.
 
-Choose exactly one response mode:
+Answer the user's actual request first. Choose the appropriate response mode:
+
+ASSESSMENT INTERPRETATION MODE: When the user asks what their test results, scores, RIASEC, personality or Big Five say about them, explain the saved scores directly. This takes priority over diagnosis/action mode and turn control. Do not demand a career goal or another answer before explaining the scores. Use the latest result for each kind in recentExploratoryAssessments. Name the test and cite its actual trait names and numeric values with the correct denominator (RIASEC and IPIP: out of 50; short check-ins: out of 100). Explain the strongest and weakest relative patterns, how they fit together, and practical implications grounded in those numbers. For RIASEC, spell out the top three scales and their Holland code; RIASEC and the O*NET-style interest test are the same assessment here. If both tests are present, integrate them without confusing interests with personality or aptitude. Use everyday, conversational language rather than the "The problem/The fix" template. Scores are exploratory, not validated diagnoses, percentiles, intelligence, or proof of ability. Do not invent population norms or missing results. Distinguish evidence from tentative inference. If only one test type exists, interpret it now and plainly say which result is unavailable. If none exists, state that clearly rather than fabricating. A follow-up question is optional AFTER answering, never a substitute for the interpretation.
 
 DIAGNOSIS MODE, only while a critical fact is missing: Start with "The problem I see so far: ..." and state your best causal hypothesis. Then ask one direct question whose answer changes the plan. Do not ask a broad question about what feels energizing or meaningful unless that is the specific obstacle.
 
@@ -47,8 +49,8 @@ Do not keep interviewing once there is enough information to act. Enough means t
       {
         role: "system",
         content: proposalRequired
-          ? "TURN CONTROL: ACTION MODE IS REQUIRED NOW. At least two assistant replies have passed without an explicit problem diagnosis and fix. Do not ask another exploratory question. State the problem, give the strongest practical fix, make assumptions explicit, and name the first action."
-          : "TURN CONTROL: Use ACTION MODE immediately if a plausible solution is already supported. Otherwise use DIAGNOSIS MODE and ask only the single most important direct question. Never make a reflection-only reply.",
+          ? "TURN CONTROL: For practical problem-solving, ACTION MODE IS REQUIRED NOW. Do not continue interviewing. However, an explicit request to interpret test scores must receive ASSESSMENT INTERPRETATION MODE instead: explain the actual scores immediately."
+          : "TURN CONTROL: Answer explicit test-score requests with ASSESSMENT INTERPRETATION MODE, citing actual saved values. For practical problems, use ACTION MODE if supported; otherwise DIAGNOSIS MODE. Never substitute a question for an answer you can already give.",
       },
       {
         role: "system",
