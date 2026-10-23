@@ -298,8 +298,18 @@ export default function TestsPage() {
   const questions = session?.questions ?? [];
   const pageCount = Math.ceil(questions.length / pageSize);
   const pageQuestions = questions.slice(page * pageSize, (page + 1) * pageSize);
-  const answeredCount = Object.keys(answers).length;
-  const pageComplete = pageQuestions.every((question) => answers[question.id] != null);
+  const unansweredQuestions = questions.filter((question) => answers[question.id] == null);
+  const answeredCount = questions.length - unansweredQuestions.length;
+  const pageUnanswered = pageQuestions.filter((question) => answers[question.id] == null);
+
+  const navigateToPage = (nextPage: number, questionId?: string) => {
+    setPage(nextPage);
+    requestAnimationFrame(() => {
+      const target = document.getElementById(questionId ? `assessment-question-${questionId}` : "assessment-page-top");
+      target?.scrollIntoView({ block: "start", behavior: "smooth" });
+      target?.focus({ preventScroll: true });
+    });
+  };
 
   const begin = (kind: "riasec" | "ipip") => {
     setError("");
@@ -318,7 +328,13 @@ export default function TestsPage() {
   };
 
   const finish = () => {
-    if (!session || answeredCount !== session.questions.length) return;
+    if (!session) return;
+    if (unansweredQuestions.length > 0) {
+      const firstMissing = unansweredQuestions[0];
+      setError(`Please answer the ${unansweredQuestions.length} remaining question${unansweredQuestions.length === 1 ? "" : "s"} before saving. You have been taken to the first unanswered question.`);
+      navigateToPage(Math.floor(questions.findIndex((question) => question.id === firstMissing.id) / pageSize), firstMissing.id);
+      return;
+    }
     setError("");
     submit.mutate(
       {
@@ -413,7 +429,7 @@ export default function TestsPage() {
             </button>
           </div>
 
-          <div className="mb-5">
+          <div id="assessment-page-top" tabIndex={-1} className="mb-5 scroll-mt-6">
             <div className="mb-2 flex justify-between text-[10px] text-muted-foreground">
               <span>Page {page + 1} of {pageCount}</span>
               <span>{answeredCount} of {session.questions.length} answered</span>
@@ -425,7 +441,7 @@ export default function TestsPage() {
 
           <div className="space-y-4">
             {pageQuestions.map((question: AssessmentQuestion, index) => (
-              <article key={question.id} className="rounded-xl border border-border p-4 md:p-5" data-testid={`test-item-${question.id}`}>
+              <article key={question.id} id={`assessment-question-${question.id}`} tabIndex={-1} className="scroll-mt-6 rounded-xl border border-border p-4 md:p-5" data-testid={`test-item-${question.id}`}>
                 <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
                   <p className="max-w-3xl text-[12px] font-medium leading-5">
                     <span className="mr-2 font-mono text-[10px] text-primary">{String(page * pageSize + index + 1).padStart(2, "0")}</span>
@@ -444,7 +460,10 @@ export default function TestsPage() {
                         type="button"
                         aria-pressed={answers[question.id] === value}
                         title={label}
-                        onClick={() => setAnswers((current) => ({ ...current, [question.id]: value }))}
+                         onClick={() => {
+                           setAnswers((current) => ({ ...current, [question.id]: value }));
+                           setError("");
+                         }}
                         data-testid={`test-answer-${question.id}-${value}`}
                         className={`min-h-12 rounded-lg border px-1 py-2 text-center transition-colors ${answers[question.id] === value ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background hover:border-primary/50"}`}
                       >
@@ -458,9 +477,26 @@ export default function TestsPage() {
             ))}
           </div>
 
+          {pageUnanswered.length > 0 && (
+            <div className="mt-5 rounded-lg border border-border bg-secondary/40 p-3 text-xs" data-testid="test-unanswered-notice" aria-live="polite">
+              <p>You can move to the next page now. Before saving, answer these questions:</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {pageUnanswered.map((question) => (
+                  <button
+                    key={question.id}
+                    type="button"
+                    onClick={() => navigateToPage(page, question.id)}
+                    className="rounded-md border border-border bg-background px-2 py-1 font-medium text-primary underline underline-offset-2"
+                  >
+                    Question {questions.indexOf(question) + 1}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
             <button
-              onClick={() => setPage((current) => Math.max(0, current - 1))}
+              onClick={() => navigateToPage(Math.max(0, page - 1))}
               disabled={page === 0}
               data-testid="button-test-previous"
               className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-[10px] disabled:opacity-40"
@@ -469,8 +505,7 @@ export default function TestsPage() {
             </button>
             {page < pageCount - 1 ? (
               <button
-                onClick={() => setPage((current) => current + 1)}
-                disabled={!pageComplete}
+                 onClick={() => navigateToPage(page + 1)}
                 data-testid="button-test-next"
                 className="inline-flex items-center gap-1 rounded-lg bg-primary px-4 py-2.5 text-[10px] font-semibold text-primary-foreground disabled:opacity-40"
               >
@@ -479,7 +514,7 @@ export default function TestsPage() {
             ) : (
               <button
                 onClick={finish}
-                disabled={answeredCount !== session.questions.length || submit.isPending}
+                 disabled={submit.isPending}
                 data-testid="button-test-submit"
                 className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-[10px] font-semibold text-primary-foreground disabled:opacity-40"
               >
