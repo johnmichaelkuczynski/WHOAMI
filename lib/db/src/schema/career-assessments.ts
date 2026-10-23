@@ -1,5 +1,6 @@
 import { createInsertSchema } from "drizzle-zod";
 import { boolean, jsonb, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { appUsersTable } from "./app-users";
 import { z } from "zod/v4";
 
 export type AssessmentKind = "interests" | "personality" | "riasec" | "ipip";
@@ -14,6 +15,7 @@ export type TraitScore = { trait: string; score: number };
 
 export const careerAssessmentsTable = pgTable("career_assessments", {
   id: serial("id").primaryKey(),
+  userId: text("user_id").references(() => appUsersTable.id, { onDelete: "cascade" }),
   kind: text("kind", { enum: ["interests", "personality", "riasec", "ipip"] }).notNull(),
   questions: jsonb("questions").$type<AssessmentQuestion[]>().notNull(),
   answers: jsonb("answers").$type<AssessmentAnswer[]>().notNull().default([]),

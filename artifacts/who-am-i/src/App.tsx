@@ -1,5 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { useRef } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import {
   Activity, ArrowDownToLine, ArrowRight, BookOpen, Check, CheckCircle2,
@@ -23,6 +22,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import TestsPage from '@/pages/tests';
+import AuthGate, { useAuth } from '@/components/auth-gate';
 
 const queryClient = new QueryClient();
 const navItems = [
@@ -35,29 +35,9 @@ const navItems = [
 const dateLabel = (value?: string) => value ? new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(new Date(value)) : 'Just now';
 const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
 
-type SpeechRecognitionResultLike = { isFinal: boolean; [index: number]: { transcript: string } };
-type SpeechRecognitionEventLike = { resultIndex: number; results: ArrayLike<SpeechRecognitionResultLike> };
-type SpeechRecognitionLike = {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: ((event: { error: string }) => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-  abort: () => void;
-};
-type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
-declare global {
-  interface Window {
-    SpeechRecognition?: SpeechRecognitionConstructor;
-    webkitSpeechRecognition?: SpeechRecognitionConstructor;
-  }
-}
-
 function Shell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
+  const { user, signOut } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem('who-am-i-sidebar-collapsed-v2') !== 'false',
   );
@@ -100,7 +80,7 @@ function Shell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-20 flex h-[58px] items-center justify-between border-b border-border/80 bg-background/95 px-4 backdrop-blur md:px-8">
         <div className="flex items-center gap-2 md:hidden"><span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground"><Waves size={16}/></span><span className="text-sm font-semibold">Who Am I?</span></div>
         <div className="hidden text-xs text-muted-foreground md:block">A quieter place to figure out what fits.</div>
-        <div className="flex items-center gap-2"><span className="size-2 rounded-full bg-[#82a990]"/><span className="text-[11px] text-muted-foreground">Private by design</span></div>
+        <div className="flex items-center gap-3"><span className="hidden max-w-[180px] truncate text-[10px] text-muted-foreground sm:inline" title={user.development ? 'Replit development account' : user.email}>{user.development ? 'Development preview' : user.email}</span>{!user.development && <button type="button" onClick={() => void signOut()} aria-label="Sign out" title="Sign out" className="text-[10px] font-semibold text-primary hover:underline">Sign out</button>}<span className="hidden items-center gap-2 sm:flex"><span className="size-2 rounded-full bg-[#82a990]"/><span className="text-[11px] text-muted-foreground">Private by design</span></span></div>
       </header>
       <div className="mx-auto max-w-[1240px] px-4 pb-24 pt-6 md:px-8 md:pb-10 md:pt-9">
         <div className="mb-5 flex items-center justify-between md:hidden"><span className="mono-label text-[10px] text-muted-foreground">{current.toUpperCase()}</span><span className="text-[11px] text-muted-foreground">Your space</span></div>
@@ -147,59 +127,96 @@ function HomePage() {
   const [notice, setNotice] = useState('');
   const [savedSummary, setSavedSummary] = useState('');
   const [recommendationNotice, setRecommendationNotice] = useState('');
-  const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  useEffect(() => () => recognitionRef.current?.abort(), []);
-  const toggleDictation = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
+  const [voiceState, setVoiceState] = useState<'idle' | 'recording' | 'transcribing'>('idle');
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (recorderRef.current && recorderRef.current.state !== 'inactive') recorderRef.current.stop();
+      streamRef.current?.getTracks().forEach(track => track.stop());
+    };
+  }, []);
+  const transcribeRecording = async (blob: Blob) => {
+    if (!blob.size) {
+      setVoiceState('idle');
+      setNotice('No audio was captured. Try recording again.');
       return;
     }
-    const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
-    if (!Recognition) {
-      setNotice('Voice input is not supported by this browser. Try Chrome or Edge, or type your message.');
-      return;
-    }
-    setNotice('');
-    const recognition = new Recognition();
-    recognition.lang = navigator.language || 'en-US';
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.onresult = event => {
-      const transcript = Array.from(event.results)
-        .slice(event.resultIndex)
-        .filter(result => result.isFinal)
-        .map(result => result[0].transcript.trim())
-        .filter(Boolean)
-        .join(' ');
-      if (transcript) {
-        setDraft(previous => `${previous.trimEnd()}${previous.trim() ? ' ' : ''}${transcript}`);
-      }
-    };
-    recognition.onerror = event => {
-      const errors: Record<string, string> = {
-        'not-allowed': 'Microphone access is blocked. Allow microphone access in your browser settings and try again.',
-        'service-not-allowed': 'Speech recognition is blocked by the browser. Check browser permissions and try again.',
-        'audio-capture': 'No microphone was found. Connect or enable a microphone and try again.',
-        network: 'Speech recognition could not connect. Check your connection and try again.',
-        'no-speech': 'No speech was detected. Try speaking a little closer to your microphone.',
-      };
-      setNotice(errors[event.error] ?? 'Voice input stopped unexpectedly. You can try again or type your message.');
-      recognitionRef.current = null;
-      setIsListening(false);
-    };
-    recognition.onend = () => {
-      if (recognitionRef.current === recognition) recognitionRef.current = null;
-      setIsListening(false);
-    };
+    setVoiceState('transcribing');
     try {
-      recognitionRef.current = recognition;
-      setIsListening(true);
-      recognition.start();
-    } catch {
-      recognitionRef.current = null;
-      setIsListening(false);
-      setNotice('The microphone could not be started. Check browser permission and try again.');
+      const response = await fetch('/api/discovery/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': blob.type || 'application/octet-stream' },
+        body: blob,
+      });
+      const result = await response.json() as { text?: string; error?: string };
+      if (!response.ok) throw new Error(result.error || 'Transcription failed. Try again.');
+      const transcript = result.text?.trim();
+      if (!transcript) {
+        setNotice('I couldn’t make out any words. Try recording again a little closer to the microphone.');
+        return;
+      }
+      setDraft(previous => `${previous.trimEnd()}${previous.trim() ? ' ' : ''}${transcript}`);
+      setNotice('');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Transcription failed. Check your connection and try again.');
+    } finally {
+      setVoiceState('idle');
+    }
+  };
+  const toggleRecording = async () => {
+    if (voiceState === 'recording') {
+      recorderRef.current?.stop();
+      return;
+    }
+    if (voiceState === 'transcribing') return;
+    setNotice('');
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setNotice('This browser cannot record audio here. Use a current browser over a secure connection, or type your message.');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const supportedTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+      const mimeType = supportedTypes.find(type => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      recorderRef.current = recorder;
+      chunksRef.current = [];
+      recorder.ondataavailable = event => {
+        if (event.data.size) chunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        stream.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+        recorderRef.current = null;
+        setVoiceState('idle');
+        setNotice('Audio recording stopped unexpectedly. Check microphone access and try again.');
+      };
+      recorder.onstop = () => {
+        const recording = new Blob(chunksRef.current, { type: recorder.mimeType || chunksRef.current[0]?.type || 'application/octet-stream' });
+        chunksRef.current = [];
+        stream.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+        recorderRef.current = null;
+        if (mountedRef.current) void transcribeRecording(recording);
+      };
+      recorder.start(1000);
+      setVoiceState('recording');
+    } catch (error) {
+      streamRef.current?.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+      setVoiceState('idle');
+      const name = error instanceof DOMException ? error.name : '';
+      setNotice(name === 'NotAllowedError' || name === 'PermissionDeniedError'
+        ? 'Microphone access is blocked. Allow microphone access in your browser settings and try again.'
+        : name === 'NotFoundError'
+          ? 'No microphone was found. Connect or enable a microphone and try again.'
+          : 'The microphone could not be started. Check browser permission and try again.');
     }
   };
   const refresh = () => { void qc.invalidateQueries({ queryKey: getGetDiscoveryDashboardQueryKey() }); void qc.invalidateQueries({ queryKey: getListCareerConversationsQueryKey() }); };
@@ -247,7 +264,7 @@ function HomePage() {
         </div>
         {notice && <div className="mx-4 mb-2 flex items-center justify-between rounded-lg bg-accent px-3 py-2 text-xs text-accent-foreground md:mx-6" role="status"><span data-testid="status-chat">{notice}</span><button onClick={() => setNotice('')} data-testid="button-dismiss-notice"><X size={13}/></button></div>}
         <form onSubmit={handleSend} className="border-t border-border bg-card px-3 py-3 md:px-6 md:py-4">
-          <div className="flex items-end gap-2 rounded-xl border border-border bg-background p-2 focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/10"><textarea value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} placeholder="Write as much or as little as you need…" rows={12} data-testid="input-chat-message" className="max-h-[480px] min-h-[288px] flex-1 resize-y bg-transparent px-2 py-1.5 text-[13px] leading-6 outline-none placeholder:text-muted-foreground/70"/><button type="button" onClick={toggleDictation} aria-label={isListening ? 'Stop voice input' : 'Start voice input'} aria-pressed={isListening} title={isListening ? 'Stop voice input' : 'Dictate a message'} data-testid="button-voice-input" className={`mb-1 grid size-9 shrink-0 place-items-center rounded-lg transition-colors ${isListening ? 'bg-destructive/10 text-destructive' : 'text-muted-foreground hover:bg-secondary hover:text-primary'}`}>{isListening ? <MicOff size={16}/> : <Mic size={16}/>}</button><button type="submit" disabled={!draft.trim() || send.isPending || create.isPending} data-testid="button-send-message" aria-label="Send reflection" className="mb-1 grid size-9 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground transition-opacity disabled:opacity-40"><Send size={16}/></button></div><div className="mt-2 flex items-center justify-between px-1 text-[9px] text-muted-foreground"><span>{isListening ? 'Listening… Tap the microphone to stop.' : 'Enter to send · Shift + Enter for a new line'}</span><span>Not a test. No wrong answers.</span></div>
+          <div className="flex items-end gap-2 rounded-xl border border-border bg-background p-2 focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/10"><textarea value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} placeholder="Write as much or as little as you need…" rows={12} data-testid="input-chat-message" className="max-h-[480px] min-h-[288px] flex-1 resize-y bg-transparent px-2 py-1.5 text-[13px] leading-6 outline-none placeholder:text-muted-foreground/70"/><button type="button" onClick={() => void toggleRecording()} aria-label={voiceState === 'recording' ? 'Stop voice recording' : voiceState === 'transcribing' ? 'Transcribing voice input' : 'Start voice recording'} aria-pressed={voiceState === 'recording'} title={voiceState === 'recording' ? 'Stop and transcribe' : voiceState === 'transcribing' ? 'Transcribing…' : 'Record a message'} disabled={voiceState === 'transcribing'} data-testid="button-voice-input" className={`mb-1 grid size-9 shrink-0 place-items-center rounded-lg transition-colors disabled:opacity-50 ${voiceState === 'recording' ? 'bg-destructive/10 text-destructive' : 'text-muted-foreground hover:bg-secondary hover:text-primary'}`}>{voiceState === 'transcribing' ? <LoaderCircle size={16} className="animate-spin"/> : voiceState === 'recording' ? <MicOff size={16}/> : <Mic size={16}/>}</button><button type="submit" disabled={!draft.trim() || send.isPending || create.isPending} data-testid="button-send-message" aria-label="Send reflection" className="mb-1 grid size-9 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground transition-opacity disabled:opacity-40"><Send size={16}/></button></div><div className="mt-2 flex items-center justify-between px-1 text-[9px] text-muted-foreground"><span>{voiceState === 'recording' ? 'Recording… Tap the microphone to stop and transcribe.' : voiceState === 'transcribing' ? 'Transcribing your recording…' : 'Enter to send · Shift + Enter for a new line'}</span><span>Not a test. No wrong answers.</span></div>
         </form>
       </section>
       <aside className="space-y-4">
@@ -357,7 +374,7 @@ function Router() {
 }
 
 function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router/></WouterRouter><Toaster/></TooltipProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><AuthGate><Router/></AuthGate></WouterRouter><Toaster/></TooltipProvider></QueryClientProvider>;
 }
 
 export default App;

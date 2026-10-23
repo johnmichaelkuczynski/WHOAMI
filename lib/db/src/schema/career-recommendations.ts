@@ -1,9 +1,11 @@
 import { createInsertSchema } from "drizzle-zod";
 import { pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { appUsersTable } from "./app-users";
 import { z } from "zod/v4";
 
 export const careerRecommendationsTable = pgTable("career_recommendations", {
   id: serial("id").primaryKey(),
+  userId: text("user_id").references(() => appUsersTable.id, { onDelete: "cascade" }),
   kind: text("kind", { enum: ["book", "activity"] }).notNull(),
   title: text("title").notNull(),
   reason: text("reason").notNull(),

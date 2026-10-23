@@ -18,6 +18,42 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * @summary Begin Google OAuth sign-in
+ */
+export const BeginGoogleLoginResponse = zod.void()
+
+
+/**
+ * @summary Complete Google OAuth sign-in
+ */
+export const CompleteGoogleLoginQueryParams = zod.object({
+  "code": zod.coerce.string().optional(),
+  "state": zod.coerce.string().optional(),
+  "error": zod.coerce.string().optional()
+})
+
+export const CompleteGoogleLoginResponse = zod.void()
+
+
+/**
+ * @summary Get the signed-in Google account
+ */
+export const GetSignedInUserResponse = zod.object({
+  "email": zod.string().email(),
+  "name": zod.string(),
+  "picture": zod.string().url().nullable()
+})
+
+
+/**
+ * @summary End the current sign-in session
+ */
+export const EndGoogleLoginResponse = zod.object({
+  "loggedOut": zod.boolean()
+})
+
+
+/**
  * @summary Get career exploration overview
  */
 export const GetDiscoveryDashboardResponse = zod.object({
@@ -152,6 +188,14 @@ export const SendCareerMessageResponse = zod.object({
   "content": zod.string(),
   "createdAt": zod.coerce.date()
 })
+})
+
+
+/**
+ * @summary Transcribe a recorded voice message
+ */
+export const TranscribeVoiceResponse = zod.object({
+  "text": zod.string()
 })
 
 

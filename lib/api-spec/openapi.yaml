@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: discovery
     description: Career exploration and saved profile
+  - name: auth
+    description: Google sign-in and account session
 paths:
   /healthz:
     get:
@@ -26,6 +28,65 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /auth/google:
+    get:
+      operationId: beginGoogleLogin
+      tags: [auth]
+      summary: Begin Google OAuth sign-in
+      responses:
+        "302":
+          description: Redirects to Google's OAuth authorization page
+  /auth/google/callback:
+    get:
+      operationId: completeGoogleLogin
+      tags: [auth]
+      summary: Complete Google OAuth sign-in
+      parameters:
+        - in: query
+          name: code
+          required: false
+          schema: { type: string }
+        - in: query
+          name: state
+          required: false
+          schema: { type: string }
+        - in: query
+          name: error
+          required: false
+          schema: { type: string }
+      responses:
+        "303":
+          description: Establishes a signed-in session and redirects to the app
+        "401":
+          description: OAuth response could not be verified
+  /auth/me:
+    get:
+      operationId: getSignedInUser
+      tags: [auth]
+      summary: Get the signed-in Google account
+      responses:
+        "200":
+          description: Signed-in account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthenticatedUser"
+        "401":
+          description: No valid sign-in session
+  /auth/logout:
+    post:
+      operationId: endGoogleLogin
+      tags: [auth]
+      summary: End the current sign-in session
+      responses:
+        "200":
+          description: Session ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutResult"
+        "401":
+          description: No valid sign-in session
   /discovery/dashboard:
     get:
       operationId: getDiscoveryDashboard
@@ -141,6 +202,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MessageExchange"
+  /discovery/transcribe:
+    post:
+      operationId: transcribeVoice
+      tags: [discovery]
+      summary: Transcribe a recorded voice message
+      requestBody:
+        required: true
+        content:
+          audio/webm:
+            schema:
+              $ref: "#/components/schemas/AudioRecording"
+          audio/mp4:
+            schema:
+              $ref: "#/components/schemas/AudioRecording"
+          audio/ogg:
+            schema:
+              $ref: "#/components/schemas/AudioRecording"
+          audio/wav:
+            schema:
+              $ref: "#/components/schemas/AudioRecording"
+          application/octet-stream:
+            schema:
+              $ref: "#/components/schemas/AudioRecording"
+      responses:
+        "200":
+          description: Recognized speech
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscriptionResult"
+        "400":
+          description: No usable audio was received
+        "415":
+          description: Audio format is not supported
+        "502":
+          description: Transcription service failed
   /discovery/conversations/{id}/summary:
     post:
       operationId: summarizeCareerConversation
@@ -275,6 +372,26 @@ components:
           type: string
       required:
         - status
+    AuthenticatedUser:
+      type: object
+      required: [email, name, picture]
+      properties:
+        email: { type: string, format: email }
+        name: { type: string }
+        picture: { type: ["string", "null"], format: uri }
+    LogoutResult:
+      type: object
+      required: [loggedOut]
+      properties:
+        loggedOut: { type: boolean }
+    AudioRecording:
+      type: string
+      description: Raw audio bytes sent with an audio content type.
+    TranscriptionResult:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string }
     CareerProfile:
       type: object
       required: [id, summary, strengths, interests, workPreferences, updatedAt]

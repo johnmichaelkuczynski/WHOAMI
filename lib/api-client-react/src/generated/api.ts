@@ -24,18 +24,22 @@ import type {
   AssessmentResult,
   AssessmentSession,
   AssessmentStartInput,
+  AuthenticatedUser,
   CareerConversation,
   CareerMessage,
   CareerProfile,
   CareerRecommendation,
+  CompleteGoogleLoginParams,
   ConversationInput,
   ConversationSummary,
   DashboardSummary,
   HealthStatus,
+  LogoutResult,
   MessageExchange,
   MessageInput,
   ProfileUpdate,
-  RecommendationUpdate
+  RecommendationUpdate,
+  TranscriptionResult
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -142,6 +146,318 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
+
+export const getBeginGoogleLoginUrl = () => {
+
+
+
+
+  return `/api/auth/google`
+}
+
+/**
+ * @summary Begin Google OAuth sign-in
+ */
+export const beginGoogleLogin = async ( options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
+
+  return customFetch<unknown>(getBeginGoogleLoginUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBeginGoogleLoginQueryKey = () => {
+    return [
+    `/api/auth/google`
+    ] as const;
+    }
+
+
+export const getBeginGoogleLoginQueryOptions = <TData = Awaited<ReturnType<typeof beginGoogleLogin>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof beginGoogleLogin>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBeginGoogleLoginQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof beginGoogleLogin>>> = ({ signal }) => beginGoogleLogin({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof beginGoogleLogin>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BeginGoogleLoginQueryResult = NonNullable<Awaited<ReturnType<typeof beginGoogleLogin>>>
+export type BeginGoogleLoginQueryError = ErrorType<void>
+
+
+/**
+ * @summary Begin Google OAuth sign-in
+ */
+
+export function useBeginGoogleLogin<TData = Awaited<ReturnType<typeof beginGoogleLogin>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof beginGoogleLogin>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBeginGoogleLoginQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCompleteGoogleLoginUrl = (params?: CompleteGoogleLoginParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/auth/google/callback?${stringifiedParams}` : `/api/auth/google/callback`
+}
+
+/**
+ * @summary Complete Google OAuth sign-in
+ */
+export const completeGoogleLogin = async (params?: CompleteGoogleLoginParams, options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
+
+  return customFetch<unknown>(getCompleteGoogleLoginUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getCompleteGoogleLoginQueryKey = (params?: CompleteGoogleLoginParams,) => {
+    return [
+    `/api/auth/google/callback`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getCompleteGoogleLoginQueryOptions = <TData = Awaited<ReturnType<typeof completeGoogleLogin>>, TError = ErrorType<void>>(params?: CompleteGoogleLoginParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof completeGoogleLogin>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getCompleteGoogleLoginQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof completeGoogleLogin>>> = ({ signal }) => completeGoogleLogin(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof completeGoogleLogin>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type CompleteGoogleLoginQueryResult = NonNullable<Awaited<ReturnType<typeof completeGoogleLogin>>>
+export type CompleteGoogleLoginQueryError = ErrorType<void>
+
+
+/**
+ * @summary Complete Google OAuth sign-in
+ */
+
+export function useCompleteGoogleLogin<TData = Awaited<ReturnType<typeof completeGoogleLogin>>, TError = ErrorType<void>>(
+ params?: CompleteGoogleLoginParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof completeGoogleLogin>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getCompleteGoogleLoginQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetSignedInUserUrl = () => {
+
+
+
+
+  return `/api/auth/me`
+}
+
+/**
+ * @summary Get the signed-in Google account
+ */
+export const getSignedInUser = async ( options?: Parameters<typeof customFetch>[1]): Promise<AuthenticatedUser> => {
+
+  return customFetch<AuthenticatedUser>(getGetSignedInUserUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSignedInUserQueryKey = () => {
+    return [
+    `/api/auth/me`
+    ] as const;
+    }
+
+
+export const getGetSignedInUserQueryOptions = <TData = Awaited<ReturnType<typeof getSignedInUser>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSignedInUser>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSignedInUserQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSignedInUser>>> = ({ signal }) => getSignedInUser({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSignedInUser>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSignedInUserQueryResult = NonNullable<Awaited<ReturnType<typeof getSignedInUser>>>
+export type GetSignedInUserQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the signed-in Google account
+ */
+
+export function useGetSignedInUser<TData = Awaited<ReturnType<typeof getSignedInUser>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSignedInUser>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSignedInUserQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getEndGoogleLoginUrl = () => {
+
+
+
+
+  return `/api/auth/logout`
+}
+
+/**
+ * @summary End the current sign-in session
+ */
+export const endGoogleLogin = async ( options?: Parameters<typeof customFetch>[1]): Promise<LogoutResult> => {
+
+  return customFetch<LogoutResult>(getEndGoogleLoginUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getEndGoogleLoginMutationKey = () => ['endGoogleLogin'] as const;
+
+export const getEndGoogleLoginMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof endGoogleLogin>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof endGoogleLogin>>, TError,void, TContext> => {
+
+const mutationKey = getEndGoogleLoginMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof endGoogleLogin>>, void> = () => {
+
+
+          return  endGoogleLogin(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EndGoogleLoginMutationResult = NonNullable<Awaited<ReturnType<typeof endGoogleLogin>>>
+
+    export type EndGoogleLoginMutationError = ErrorType<void>
+
+
+    /**
+ * @summary End the current sign-in session
+ */
+export const useEndGoogleLogin = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof endGoogleLogin>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof endGoogleLogin>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getEndGoogleLoginMutationOptions(options));
+    }
 
 export const getGetDiscoveryDashboardUrl = () => {
 
@@ -714,6 +1030,94 @@ export const useSendCareerMessage = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getSendCareerMessageMutationOptions(options));
+    }
+
+export const getTranscribeVoiceUrl = () => {
+
+
+
+
+  return `/api/discovery/transcribe`
+}
+
+/**
+ * @summary Transcribe a recorded voice message
+ */
+export const transcribeVoice = async (transcribeVoiceBody: Blob, options?: Parameters<typeof customFetch>[1]): Promise<TranscriptionResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<TranscriptionResult>(getTranscribeVoiceUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'audio/webm', ...getHeaders(options?.headers) },
+    body: transcribeVoiceBody
+  }
+);}
+
+
+
+
+
+export const getTranscribeVoiceMutationKey = () => ['transcribeVoice'] as const;
+
+export const getTranscribeVoiceMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transcribeVoice>>, TError,TranscribeVoiceMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof transcribeVoice>>, TError,TranscribeVoiceMutationVariables, TContext> => {
+
+const mutationKey = getTranscribeVoiceMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof transcribeVoice>>, TranscribeVoiceMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  transcribeVoice(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TranscribeVoiceMutationResult = NonNullable<Awaited<ReturnType<typeof transcribeVoice>>>
+    export type TranscribeVoiceMutationBody = BodyType<Blob>
+    export type TranscribeVoiceMutationError = ErrorType<void>
+    export type TranscribeVoiceMutationVariables = {data: BodyType<Blob>}
+
+    /**
+ * @summary Transcribe a recorded voice message
+ */
+export const useTranscribeVoice = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transcribeVoice>>, TError,TranscribeVoiceMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof transcribeVoice>>,
+        TError,
+        TranscribeVoiceMutationVariables,
+        TContext
+      > => {
+      return useMutation(getTranscribeVoiceMutationOptions(options));
     }
 
 export const getSummarizeCareerConversationUrl = (id: number,) => {

@@ -9,6 +9,26 @@ export interface HealthStatus {
   status: string;
 }
 
+export interface AuthenticatedUser {
+  email: string;
+  name: string;
+  /** @nullable */
+  picture: string | null;
+}
+
+export interface LogoutResult {
+  loggedOut: boolean;
+}
+
+/**
+ * Raw audio bytes sent with an audio content type.
+ */
+export type AudioRecording = string;
+
+export interface TranscriptionResult {
+  text: string;
+}
+
 export interface CareerProfile {
   id: number;
   summary: string;
@@ -227,4 +247,10 @@ export interface DashboardSummary {
   latestSummary: string | null;
   recentActivity: RecentActivity[];
 }
+
+export type CompleteGoogleLoginParams = {
+code?: string;
+state?: string;
+error?: string;
+};
 

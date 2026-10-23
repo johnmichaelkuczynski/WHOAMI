@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request } from "express";
 import { and, count, desc, eq, isNotNull, ne } from "drizzle-orm";
-import { db } from "@workspace/db";
+import { appUsersTable, db } from "@workspace/db";
 import {
   careerAssessmentsTable,
   careerConversationsTable,
@@ -50,24 +50,33 @@ import {
 
 const router: IRouter = Router();
 
-async function getOrCreateProfile(): Promise<CareerProfile> {
-  const [existing] = await db
-    .select()
-    .from(careerProfilesTable)
-    .where(eq(careerProfilesTable.id, 1))
-    .limit(1);
-  if (existing) return existing;
-  await db
-    .insert(careerProfilesTable)
-    .values({ id: 1, summary: "", strengths: [], interests: [], workPreferences: [] })
-    .onConflictDoNothing();
-  const [profile] = await db
-    .select()
-    .from(careerProfilesTable)
-    .where(eq(careerProfilesTable.id, 1))
-    .limit(1);
-  if (!profile) throw new Error("Unable to initialize the career profile.");
-  return profile;
+function authenticatedUserId(req: Request): string {
+  if (!req.authUser) throw new Error("Authentication middleware did not provide a user.");
+  return req.authUser.id;
+}
+
+async function getOrCreateProfile(userId: string): Promise<CareerProfile> {
+  return db.transaction(async (tx) => {
+    // Serialize first-profile creation for this user without imposing a destructive
+    // unique-constraint migration on the existing single-user profile table.
+    await tx
+      .select({ id: appUsersTable.id })
+      .from(appUsersTable)
+      .where(eq(appUsersTable.id, userId))
+      .for("update");
+    const [existing] = await tx
+      .select()
+      .from(careerProfilesTable)
+      .where(eq(careerProfilesTable.userId, userId))
+      .limit(1);
+    if (existing) return existing;
+    const [profile] = await tx
+      .insert(careerProfilesTable)
+      .values({ userId, summary: "", strengths: [], interests: [], workPreferences: [] })
+      .returning();
+    if (!profile) throw new Error("Unable to initialize the career profile.");
+    return profile;
+  });
 }
 
 function profileSnapshot(profile: CareerProfile) {
@@ -83,35 +92,39 @@ function logAiError(req: Request, error: unknown) {
   req.log.error({ err: error }, "Career exploration AI request failed");
 }
 
-router.get("/discovery/profile", async (_req, res): Promise<void> => {
-  const profile = await getOrCreateProfile();
+router.get("/discovery/profile", async (req, res): Promise<void> => {
+  const profile = await getOrCreateProfile(authenticatedUserId(req));
   res.json(GetCareerProfileResponse.parse(profile));
 });
 
 router.patch("/discovery/profile", async (req, res): Promise<void> => {
+  const userId = authenticatedUserId(req);
   const parsed = UpdateCareerProfileBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const profile = await getOrCreateProfile();
+  const profile = await getOrCreateProfile(userId);
   const [updated] = await db
     .update(careerProfilesTable)
     .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(careerProfilesTable.id, profile.id))
+    .where(and(eq(careerProfilesTable.id, profile.id), eq(careerProfilesTable.userId, userId)))
     .returning();
   res.json(UpdateCareerProfileResponse.parse(updated));
 });
 
-router.get("/discovery/conversations", async (_req, res): Promise<void> => {
+router.get("/discovery/conversations", async (req, res): Promise<void> => {
+  const userId = authenticatedUserId(req);
   const conversations = await db
     .select()
     .from(careerConversationsTable)
+    .where(eq(careerConversationsTable.userId, userId))
     .orderBy(desc(careerConversationsTable.updatedAt));
   res.json(ListCareerConversationsResponse.parse(conversations));
 });
 
 router.post("/discovery/conversations", async (req, res): Promise<void> => {
+  const userId = authenticatedUserId(req);
   const parsed = CreateCareerConversationBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -119,12 +132,13 @@ router.post("/discovery/conversations", async (req, res): Promise<void> => {
   }
   const [conversation] = await db
     .insert(careerConversationsTable)
-    .values({ title: parsed.data.title })
+    .values({ title: parsed.data.title, userId })
     .returning();
   res.status(201).json(CreateCareerConversationResponse.parse(conversation));
 });
 
 router.get("/discovery/conversations/:id/messages", async (req, res): Promise<void> => {
+  const userId = authenticatedUserId(req);
   const parsed = ListCareerMessagesParams.safeParse(req.params);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -133,7 +147,7 @@ router.get("/discovery/conversations/:id/messages", async (req, res): Promise<vo
   const [conversation] = await db
     .select({ id: careerConversationsTable.id })
     .from(careerConversationsTable)
-    .where(eq(careerConversationsTable.id, parsed.data.id))
+    .where(and(eq(careerConversationsTable.id, parsed.data.id), eq(careerConversationsTable.userId, userId)))
     .limit(1);
   if (!conversation) {
     res.status(404).json({ error: "Conversation not found." });
@@ -148,6 +162,7 @@ router.get("/discovery/conversations/:id/messages", async (req, res): Promise<vo
 });
 
 router.post("/discovery/conversations/:id/messages", async (req, res): Promise<void> => {
+  const userId = authenticatedUserId(req);
   const params = SendCareerMessageParams.safeParse(req.params);
   const body = SendCareerMessageBody.safeParse(req.body);
   if (!params.success) {
@@ -161,7 +176,7 @@ router.post("/discovery/conversations/:id/messages", async (req, res): Promise<v
   const [conversation] = await db
     .select()
     .from(careerConversationsTable)
-    .where(eq(careerConversationsTable.id, params.data.id))
+    .where(and(eq(careerConversationsTable.id, params.data.id), eq(careerConversationsTable.userId, userId)))
     .limit(1);
   if (!conversation) {
     res.status(404).json({ error: "Conversation not found." });
@@ -185,7 +200,7 @@ router.post("/discovery/conversations/:id/messages", async (req, res): Promise<v
     assistantTurnsSinceProposal += 1;
   }
   const proposalRequired = assistantTurnsSinceProposal >= 2;
-  const profile = await getOrCreateProfile();
+  const profile = await getOrCreateProfile(userId);
   const [savedReflections, recentUserMessages, recentAssessments] = await Promise.all([
     db
       .select({
@@ -193,7 +208,7 @@ router.post("/discovery/conversations/:id/messages", async (req, res): Promise<v
         summary: careerConversationsTable.summary,
       })
       .from(careerConversationsTable)
-      .where(isNotNull(careerConversationsTable.summary))
+      .where(and(isNotNull(careerConversationsTable.summary), eq(careerConversationsTable.userId, userId)))
       .orderBy(desc(careerConversationsTable.updatedAt))
       .limit(8),
     db
@@ -210,6 +225,7 @@ router.post("/discovery/conversations/:id/messages", async (req, res): Promise<v
         and(
           ne(careerMessagesTable.conversationId, conversation.id),
           eq(careerMessagesTable.role, "user"),
+          eq(careerConversationsTable.userId, userId),
         ),
       )
       .orderBy(desc(careerMessagesTable.createdAt))
@@ -225,6 +241,7 @@ router.post("/discovery/conversations/:id/messages", async (req, res): Promise<v
         and(
           isNotNull(careerAssessmentsTable.completedAt),
           eq(careerAssessmentsTable.verificationRun, false),
+          eq(careerAssessmentsTable.userId, userId),
         ),
       )
       .orderBy(desc(careerAssessmentsTable.completedAt))
@@ -276,13 +293,14 @@ router.post("/discovery/conversations/:id/messages", async (req, res): Promise<v
           : conversation.title,
       updatedAt: new Date(),
     })
-    .where(eq(careerConversationsTable.id, conversation.id));
+    .where(and(eq(careerConversationsTable.id, conversation.id), eq(careerConversationsTable.userId, userId)));
   res.status(201).json(
     SendCareerMessageResponse.parse({ userMessage, assistantMessage }),
   );
 });
 
 router.post("/discovery/conversations/:id/summary", async (req, res): Promise<void> => {
+  const userId = authenticatedUserId(req);
   const params = SummarizeCareerConversationParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -291,7 +309,7 @@ router.post("/discovery/conversations/:id/summary", async (req, res): Promise<vo
   const [conversation] = await db
     .select()
     .from(careerConversationsTable)
-    .where(eq(careerConversationsTable.id, params.data.id))
+    .where(and(eq(careerConversationsTable.id, params.data.id), eq(careerConversationsTable.userId, userId)))
     .limit(1);
   if (!conversation) {
     res.status(404).json({ error: "Conversation not found." });
@@ -306,7 +324,7 @@ router.post("/discovery/conversations/:id/summary", async (req, res): Promise<vo
     res.status(400).json({ error: "Add a few messages before summarizing." });
     return;
   }
-  const profile = await getOrCreateProfile();
+  const profile = await getOrCreateProfile(userId);
   let reflection: Awaited<ReturnType<typeof summarizeReflection>>;
   try {
     reflection = await summarizeReflection(
@@ -321,12 +339,12 @@ router.post("/discovery/conversations/:id/summary", async (req, res): Promise<vo
   const [updatedProfile] = await db
     .update(careerProfilesTable)
     .set({ ...reflection.profile, updatedAt: new Date() })
-    .where(eq(careerProfilesTable.id, profile.id))
+    .where(and(eq(careerProfilesTable.id, profile.id), eq(careerProfilesTable.userId, userId)))
     .returning();
   await db
     .update(careerConversationsTable)
     .set({ summary: reflection.summary, updatedAt: new Date() })
-    .where(eq(careerConversationsTable.id, conversation.id));
+    .where(and(eq(careerConversationsTable.id, conversation.id), eq(careerConversationsTable.userId, userId)));
   res.json(
     SummarizeCareerConversationResponse.parse({
       conversationId: conversation.id,
@@ -336,7 +354,8 @@ router.post("/discovery/conversations/:id/summary", async (req, res): Promise<vo
   );
 });
 
-router.get("/discovery/assessments", async (_req, res): Promise<void> => {
+router.get("/discovery/assessments", async (req, res): Promise<void> => {
+  const userId = authenticatedUserId(req);
   const assessments = await db
     .select({
       id: careerAssessmentsTable.id,
@@ -348,12 +367,13 @@ router.get("/discovery/assessments", async (_req, res): Promise<void> => {
       verificationRun: careerAssessmentsTable.verificationRun,
     })
     .from(careerAssessmentsTable)
-    .where(isNotNull(careerAssessmentsTable.completedAt))
+    .where(and(isNotNull(careerAssessmentsTable.completedAt), eq(careerAssessmentsTable.userId, userId)))
     .orderBy(desc(careerAssessmentsTable.completedAt));
   res.json(ListAssessmentResultsResponse.parse(assessments));
 });
 
 router.post("/discovery/assessments/start", async (req, res): Promise<void> => {
+  const userId = authenticatedUserId(req);
   const parsed = StartAssessmentBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -365,7 +385,7 @@ router.post("/discovery/assessments/start", async (req, res): Promise<void> => {
           await db
             .select({ questions: careerAssessmentsTable.questions })
             .from(careerAssessmentsTable)
-            .where(eq(careerAssessmentsTable.kind, parsed.data.kind))
+            .where(and(eq(careerAssessmentsTable.kind, parsed.data.kind), eq(careerAssessmentsTable.userId, userId)))
         ).flatMap((assessment) => assessment.questions)
       : [];
   let questions: AssessmentQuestion[];
@@ -382,6 +402,7 @@ router.post("/discovery/assessments/start", async (req, res): Promise<void> => {
     .insert(careerAssessmentsTable)
     .values({
       kind: parsed.data.kind,
+      userId,
       questions,
       answers: [],
       scores: [],
@@ -399,6 +420,7 @@ router.post("/discovery/assessments/start", async (req, res): Promise<void> => {
 });
 
 router.post("/discovery/assessments/:id/submit", async (req, res): Promise<void> => {
+  const userId = authenticatedUserId(req);
   const params = SubmitAssessmentParams.safeParse(req.params);
   const body = SubmitAssessmentBody.safeParse(req.body);
   if (!params.success) {
@@ -412,7 +434,7 @@ router.post("/discovery/assessments/:id/submit", async (req, res): Promise<void>
   const [assessment] = await db
     .select()
     .from(careerAssessmentsTable)
-    .where(eq(careerAssessmentsTable.id, params.data.id))
+    .where(and(eq(careerAssessmentsTable.id, params.data.id), eq(careerAssessmentsTable.userId, userId)))
     .limit(1);
   if (!assessment) {
     res.status(404).json({ error: "Assessment not found." });
@@ -437,11 +459,11 @@ router.post("/discovery/assessments/:id/submit", async (req, res): Promise<void>
   const [updated] = await db
     .update(careerAssessmentsTable)
     .set({ answers, scores, completedAt })
-    .where(eq(careerAssessmentsTable.id, assessment.id))
+    .where(and(eq(careerAssessmentsTable.id, assessment.id), eq(careerAssessmentsTable.userId, userId)))
     .returning();
   let profileUpdated = false;
   if (!updated.verificationRun) {
-    const profile = await getOrCreateProfile();
+    const profile = await getOrCreateProfile(userId);
     const [savedConversationSummaries, completedAssessments] = await Promise.all([
       db
         .select({
@@ -449,7 +471,7 @@ router.post("/discovery/assessments/:id/submit", async (req, res): Promise<void>
           summary: careerConversationsTable.summary,
         })
         .from(careerConversationsTable)
-        .where(isNotNull(careerConversationsTable.summary))
+        .where(and(isNotNull(careerConversationsTable.summary), eq(careerConversationsTable.userId, userId)))
         .orderBy(desc(careerConversationsTable.updatedAt))
         .limit(8),
       db
@@ -463,6 +485,7 @@ router.post("/discovery/assessments/:id/submit", async (req, res): Promise<void>
           and(
             isNotNull(careerAssessmentsTable.completedAt),
             eq(careerAssessmentsTable.verificationRun, false),
+            eq(careerAssessmentsTable.userId, userId),
           ),
         )
         .orderBy(desc(careerAssessmentsTable.completedAt))
@@ -502,7 +525,7 @@ router.post("/discovery/assessments/:id/submit", async (req, res): Promise<void>
     const [updatedProfile] = await db
       .update(careerProfilesTable)
       .set({ ...profileUpdate, updatedAt: new Date() })
-      .where(eq(careerProfilesTable.id, profile.id))
+      .where(and(eq(careerProfilesTable.id, profile.id), eq(careerProfilesTable.userId, userId)))
       .returning();
     profileUpdated = Boolean(updatedProfile);
   }
@@ -520,17 +543,19 @@ router.post("/discovery/assessments/:id/submit", async (req, res): Promise<void>
   );
 });
 
-router.get("/discovery/recommendations", async (_req, res): Promise<void> => {
+router.get("/discovery/recommendations", async (req, res): Promise<void> => {
+  const userId = authenticatedUserId(req);
   const recommendations = await db
     .select()
     .from(careerRecommendationsTable)
-    .where(eq(careerRecommendationsTable.status, "new"))
+    .where(and(eq(careerRecommendationsTable.status, "new"), eq(careerRecommendationsTable.userId, userId)))
     .orderBy(desc(careerRecommendationsTable.createdAt));
   res.json(ListCareerRecommendationsResponse.parse(recommendations));
 });
 
 router.post("/discovery/recommendations", async (req, res): Promise<void> => {
-  const profile = await getOrCreateProfile();
+  const userId = authenticatedUserId(req);
+  const profile = await getOrCreateProfile(userId);
   let suggestions: Awaited<ReturnType<typeof createRecommendations>>;
   try {
     suggestions = await createRecommendations(profileSnapshot(profile));
@@ -541,12 +566,13 @@ router.post("/discovery/recommendations", async (req, res): Promise<void> => {
   }
   const created = await db
     .insert(careerRecommendationsTable)
-    .values(suggestions.map((suggestion) => ({ ...suggestion, status: "new" as const })))
+    .values(suggestions.map((suggestion) => ({ ...suggestion, userId, status: "new" as const })))
     .returning();
   res.status(201).json(GenerateCareerRecommendationsResponse.parse(created));
 });
 
 router.patch("/discovery/recommendations/:id", async (req, res): Promise<void> => {
+  const userId = authenticatedUserId(req);
   const params = UpdateCareerRecommendationParams.safeParse(req.params);
   const body = UpdateCareerRecommendationBody.safeParse(req.body);
   if (!params.success) {
@@ -560,7 +586,7 @@ router.patch("/discovery/recommendations/:id", async (req, res): Promise<void> =
   const [updated] = await db
     .update(careerRecommendationsTable)
     .set({ status: body.data.status })
-    .where(eq(careerRecommendationsTable.id, params.data.id))
+    .where(and(eq(careerRecommendationsTable.id, params.data.id), eq(careerRecommendationsTable.userId, userId)))
     .returning();
   if (!updated) {
     res.status(404).json({ error: "Recommendation not found." });
@@ -569,8 +595,9 @@ router.patch("/discovery/recommendations/:id", async (req, res): Promise<void> =
   res.json(UpdateCareerRecommendationResponse.parse(updated));
 });
 
-router.get("/discovery/dashboard", async (_req, res): Promise<void> => {
-  const profile = await getOrCreateProfile();
+router.get("/discovery/dashboard", async (req, res): Promise<void> => {
+  const userId = authenticatedUserId(req);
+  const profile = await getOrCreateProfile(userId);
   const [
     [conversationCount],
     [assessmentCount],
@@ -580,7 +607,7 @@ router.get("/discovery/dashboard", async (_req, res): Promise<void> => {
     assessments,
     recommendations,
   ] = await Promise.all([
-    db.select({ count: count() }).from(careerConversationsTable),
+    db.select({ count: count() }).from(careerConversationsTable).where(eq(careerConversationsTable.userId, userId)),
     db
       .select({ count: count() })
       .from(careerAssessmentsTable)
@@ -588,21 +615,23 @@ router.get("/discovery/dashboard", async (_req, res): Promise<void> => {
         and(
           isNotNull(careerAssessmentsTable.completedAt),
           eq(careerAssessmentsTable.verificationRun, false),
+          eq(careerAssessmentsTable.userId, userId),
         ),
       ),
     db
       .select({ count: count() })
       .from(careerRecommendationsTable)
-      .where(eq(careerRecommendationsTable.status, "new")),
+      .where(and(eq(careerRecommendationsTable.status, "new"), eq(careerRecommendationsTable.userId, userId))),
     db
       .select({ summary: careerConversationsTable.summary })
       .from(careerConversationsTable)
-      .where(isNotNull(careerConversationsTable.summary))
+      .where(and(isNotNull(careerConversationsTable.summary), eq(careerConversationsTable.userId, userId)))
       .orderBy(desc(careerConversationsTable.updatedAt))
       .limit(1),
     db
       .select({ title: careerConversationsTable.title, createdAt: careerConversationsTable.updatedAt })
       .from(careerConversationsTable)
+      .where(eq(careerConversationsTable.userId, userId))
       .orderBy(desc(careerConversationsTable.updatedAt))
       .limit(4),
     db
@@ -612,6 +641,7 @@ router.get("/discovery/dashboard", async (_req, res): Promise<void> => {
         and(
           isNotNull(careerAssessmentsTable.completedAt),
           eq(careerAssessmentsTable.verificationRun, false),
+          eq(careerAssessmentsTable.userId, userId),
         ),
       )
       .orderBy(desc(careerAssessmentsTable.completedAt))
@@ -619,6 +649,7 @@ router.get("/discovery/dashboard", async (_req, res): Promise<void> => {
     db
       .select({ title: careerRecommendationsTable.title, createdAt: careerRecommendationsTable.createdAt })
       .from(careerRecommendationsTable)
+      .where(eq(careerRecommendationsTable.userId, userId))
       .orderBy(desc(careerRecommendationsTable.createdAt))
       .limit(4),
   ]);
