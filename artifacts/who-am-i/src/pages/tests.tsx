@@ -10,29 +10,14 @@ import {
   useSubmitAssessment,
 } from "@workspace/api-client-react";
 import type { AssessmentQuestion, AssessmentResult, AssessmentSession } from "@workspace/api-client-react";
+import { AssessmentDownloads } from "@/components/assessment-downloads";
+import { BIG_FIVE_DESCRIPTIONS, hollandCode } from "@/lib/assessment-download";
 import {
   ONET_INTEREST_SOURCE,
   ONET_INTEREST_SOURCE_URL,
   occupationsForHollandCode,
   occupationsForHollandPrefix,
 } from "@/data/onet";
-
-const RIASEC_LETTERS: Record<string, string> = {
-  Realistic: "R",
-  Investigative: "I",
-  Artistic: "A",
-  Social: "S",
-  Enterprising: "E",
-  Conventional: "C",
-};
-
-const BIG_FIVE_DESCRIPTIONS: Record<string, string> = {
-  Extraversion: "How much you tend to seek social interaction, visible activity, and outward engagement at work.",
-  Agreeableness: "How much you tend to prioritize cooperation, tact, and consideration in working with others.",
-  Conscientiousness: "How much you tend to prefer planning, organization, and steady follow-through.",
-  "Emotional Stability": "How steady and composed you tend to feel under pressure; this is not a measure of resilience or worth.",
-  "Intellect/Imagination": "How much you tend to enjoy ideas, learning, novelty, and imaginative problem-solving.",
-};
 
 const RIASEC_RATINGS = ["Strongly dislike", "Dislike", "Neutral", "Like", "Strongly like"];
 const IPIP_RATINGS = ["Very inaccurate", "Somewhat inaccurate", "Neither", "Somewhat accurate", "Very accurate"];
@@ -50,14 +35,6 @@ function dateLabel(value: string | Date) {
     month: "short",
     day: "numeric",
   }).format(new Date(value));
-}
-
-function hollandCode(scores: AssessmentResult["scores"]) {
-  return [...scores]
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3)
-    .map((score) => RIASEC_LETTERS[score.trait] ?? "")
-    .join("");
 }
 
 function QueryError({ message, retry }: { message: string; retry: () => void }) {
@@ -121,6 +98,7 @@ function ResultSummary({ result }: { result: AssessmentResult }) {
           <CheckCircle2 size={20} />
         </span>
       </div>
+      <AssessmentDownloads result={result} />
       {result.profileUpdated && !result.verificationRun && (
         <p role="status" className="mt-4 rounded-lg border border-primary/15 bg-card/70 px-3 py-2 text-[11px]">
           Your profile now includes this test alongside saved conversation summaries.
@@ -254,6 +232,7 @@ function ScoreHistory({ results }: { results: AssessmentResult[] }) {
                   Show all {result.questions.length} generated items and answers
                 </span>
               </summary>
+              <AssessmentDownloads result={result} />
               <div className="mt-4 space-y-3 border-t border-border pt-4">
                 <ScoreRows result={result} />
                 {result.questions.map((question, index) => {

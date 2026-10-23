@@ -18,6 +18,7 @@ import {
 } from '@workspace/api-client-react';
 import type { AssessmentSession, CareerRecommendation } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { AssessmentDownloads } from '@/components/assessment-downloads';
 import { createQueryClient } from '@/lib/query-client';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -303,7 +304,18 @@ function AssessmentsPage() {
       <button onClick={() => begin('interests')} disabled={start.isPending} data-testid="button-start-interests" className="group min-h-[190px] rounded-2xl border border-border bg-[hsl(36_40%_94%)] p-6 text-left transition-transform hover:-translate-y-0.5"><div className="flex items-center justify-between"><span className="grid size-10 place-items-center rounded-xl bg-card text-primary"><Compass size={20}/></span><ArrowRight size={17} className="text-muted-foreground transition-transform group-hover:translate-x-1"/></div><p className="serif-display mt-7 text-[28px]">Career interests</p><p className="mt-1 text-xs text-muted-foreground">What kinds of problems and possibilities pull you closer?</p></button>
       <button onClick={() => begin('personality')} disabled={start.isPending} data-testid="button-start-personality" className="group min-h-[190px] rounded-2xl border border-border bg-[hsl(152_24%_91%)] p-6 text-left transition-transform hover:-translate-y-0.5"><div className="flex items-center justify-between"><span className="grid size-10 place-items-center rounded-xl bg-card text-primary"><Waves size={20}/></span><ArrowRight size={17} className="text-muted-foreground transition-transform group-hover:translate-x-1"/></div><p className="serif-display mt-7 text-[28px]">Work style & personality</p><p className="mt-1 text-xs text-muted-foreground">Notice the conditions that help you do your best work.</p></button>
     </div>}
-    <section className="mt-9"><div className="mb-4 flex items-end justify-between"><div><p className="mono-label text-[9px] text-muted-foreground">YOUR NOTES OVER TIME</p><h2 className="serif-display mt-1 text-[27px]">Past check-ins</h2></div><span className="text-[10px] text-muted-foreground">{results.data?.length ?? 0} saved</span></div>{results.isLoading ? <Skeleton rows={3}/> : results.isError ? <QueryError error={results.error} retry={() => void results.refetch()}/> : !results.data?.length ? <Empty icon={Activity} title="Nothing to compare yet" body="Your saved check-ins will gather here. Revisit them as your thinking changes."/> : <div className="space-y-3">{results.data.map(result => <div key={result.id} className="rounded-xl border border-border bg-card p-4 md:p-5" data-testid={`card-assessment-result-${result.id}`}><div className="mb-4 flex items-center justify-between"><div><p className="text-[13px] font-semibold">{kindLabel(result.kind)}</p><p className="mt-1 text-[10px] text-muted-foreground">Completed {dateLabel(result.completedAt)} · exploratory</p></div><CheckCircle2 size={17} className="text-primary"/></div><div className="grid gap-2 sm:grid-cols-2">{result.scores.map((score, i) => <div key={`${score.trait}-${i}`} className="flex items-center gap-3"><span className="w-28 truncate text-[10px] capitalize text-muted-foreground">{score.trait}</span><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary"><div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(0, Math.min(100, score.score))}%` }}/></div><span className="w-7 text-right font-mono text-[9px]">{score.score}</span></div>)}</div></div>)}</div>}</section>
+    <section className="mt-9">
+      <div className="mb-4 flex items-end justify-between"><div><p className="mono-label text-[9px] text-muted-foreground">YOUR NOTES OVER TIME</p><h2 className="serif-display mt-1 text-[27px]">Past check-ins</h2></div><span className="text-[10px] text-muted-foreground">{results.data?.length ?? 0} saved</span></div>
+      {results.isLoading ? <Skeleton rows={3}/> : results.isError ? <QueryError error={results.error} retry={() => void results.refetch()}/> : !results.data?.length ? <Empty icon={Activity} title="Nothing to compare yet" body="Your saved check-ins will gather here. Revisit them as your thinking changes."/> : (
+        <div className="space-y-3">{results.data.map(result => (
+          <div key={result.id} className="rounded-xl border border-border bg-card p-4 md:p-5" data-testid={`card-assessment-result-${result.id}`}>
+            <div className="mb-4 flex items-center justify-between"><div><p className="text-[13px] font-semibold">{kindLabel(result.kind)}</p><p className="mt-1 text-[10px] text-muted-foreground">Completed {dateLabel(result.completedAt)} · exploratory</p></div><CheckCircle2 size={17} className="text-primary"/></div>
+            <div className="grid gap-2 sm:grid-cols-2">{result.scores.map((score, i) => <div key={`${score.trait}-${i}`} className="flex items-center gap-3"><span className="w-28 truncate text-[10px] capitalize text-muted-foreground">{score.trait}</span><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary"><div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(0, Math.min(100, score.score))}%` }}/></div><span className="w-7 text-right font-mono text-[9px]">{score.score}</span></div>)}</div>
+            <AssessmentDownloads result={result}/>
+          </div>
+        ))}</div>
+      )}
+    </section>
   </div>;
 }
 
