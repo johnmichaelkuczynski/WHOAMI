@@ -379,6 +379,8 @@ router.post("/discovery/assessments/start", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  const verificationRun =
+    parsed.data.verificationRun === true && process.env.NODE_ENV !== "production";
   const previousQuestions =
     parsed.data.kind === "riasec" || parsed.data.kind === "ipip"
       ? (
@@ -390,14 +392,16 @@ router.post("/discovery/assessments/start", async (req, res): Promise<void> => {
       : [];
   let questions: AssessmentQuestion[];
   try {
-    questions = await createAssessmentQuestions(parsed.data.kind, previousQuestions);
+    questions = await createAssessmentQuestions(
+      parsed.data.kind,
+      previousQuestions,
+      verificationRun,
+    );
   } catch (error) {
     logAiError(req, error);
     res.status(502).json({ error: "The assessment could not be prepared. Please try again." });
     return;
   }
-  const verificationRun =
-    parsed.data.verificationRun === true && process.env.NODE_ENV !== "production";
   const [session] = await db
     .insert(careerAssessmentsTable)
     .values({

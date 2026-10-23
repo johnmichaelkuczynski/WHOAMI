@@ -102,10 +102,38 @@ export async function summarizeReflection(
   };
 }
 
+function createVerificationAssessmentQuestions(kind: AssessmentKind): AssessmentQuestion[] {
+  if (kind === "riasec" || kind === "ipip") {
+    const traits = kind === "riasec" ? RIASEC_TRAITS : IPIP_TRAITS;
+    return traits.flatMap((trait, traitIndex) =>
+      Array.from({ length: 10 }, (_, itemIndex) => ({
+        id: `verification-${kind}-${traitIndex + 1}-${itemIndex + 1}`,
+        prompt: `Verification-only ${kind} statement ${traitIndex + 1}-${itemIndex + 1} for ${trait}.`,
+        trait,
+        ...(kind === "ipip"
+          ? { keying: itemIndex < 5 ? ("positive" as const) : ("reverse" as const) }
+          : {}),
+      })),
+    );
+  }
+
+  const traits =
+    kind === "interests"
+      ? RIASEC_TRAITS
+      : ["Openness", "Conscientiousness", "Extraversion", "Agreeableness", "Emotional Stability"];
+  return Array.from({ length: 6 }, (_, index) => ({
+    id: `verification-${kind}-${index + 1}`,
+    prompt: `Verification-only ${kind} statement ${index + 1} for ${traits[index % traits.length]}.`,
+    trait: traits[index % traits.length]!,
+  }));
+}
+
 export async function createAssessmentQuestions(
   kind: AssessmentKind,
   previousQuestions: AssessmentQuestion[] = [],
+  verificationRun = process.env.NODE_ENV === "test",
 ): Promise<AssessmentQuestion[]> {
+  if (verificationRun) return createVerificationAssessmentQuestions(kind);
   if (kind === "riasec" || kind === "ipip") {
     return createLongAssessmentQuestions(kind, previousQuestions);
   }

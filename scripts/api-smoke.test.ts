@@ -151,6 +151,88 @@ test("profile and conversation data stay isolated between Google accounts", asyn
   }
 });
 
+test("a completed check-in appears in Past check-ins", async (t) => {
+  const targetHost = new URL(baseUrl).hostname;
+  if (!["127.0.0.1", "localhost", "::1"].includes(targetHost)) {
+    t.skip("assessment flow tests only write to the local development API");
+    return;
+  }
+
+  const suffix = randomUUID();
+  const userId = `assessment-test-${suffix}`;
+  const token = randomBytes(32).toString("base64url");
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(appUsersTable).values({
+        id: userId,
+        email: `assessment-${suffix}@example.invalid`,
+        name: "Assessment test",
+      });
+      await tx.insert(appSessionsTable).values({
+        userId,
+        tokenHash: createHash("sha256").update(token).digest("hex"),
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+    });
+
+    const start = await request("/api/discovery/assessments/start", {
+      method: "POST",
+      token,
+      body: { kind: "interests", verificationRun: true },
+    });
+    assert.equal(start.response.status, 201, JSON.stringify(start.body));
+    const session = start.body as {
+      id: number;
+      kind: string;
+      verificationRun: boolean;
+      questions: Array<{ id: string }>;
+    };
+    assert.equal(session.kind, "interests");
+    assert.equal(session.verificationRun, true);
+    assert.ok(session.questions.length > 0);
+
+    const answers = session.questions.map((question, index) => ({
+      questionId: question.id,
+      score: (index % 5) + 1,
+    }));
+    assert.equal(answers.length, session.questions.length);
+    const submit = await request(`/api/discovery/assessments/${session.id}/submit`, {
+      method: "POST",
+      token,
+      body: { answers },
+    });
+    assert.equal(submit.response.status, 201, JSON.stringify(submit.body));
+    const savedResult = submit.body as {
+      id: number;
+      kind: string;
+      verificationRun: boolean;
+      scores: Array<{ trait: string; score: number }>;
+      completedAt: string;
+      profileUpdated: boolean;
+    };
+    assert.equal(savedResult.id, session.id);
+    assert.equal(savedResult.kind, "interests");
+    assert.equal(savedResult.verificationRun, true);
+    assert.equal(savedResult.profileUpdated, false);
+    assert.ok(savedResult.scores.length > 0);
+    assert.ok(Number.isFinite(Date.parse(savedResult.completedAt)));
+
+    const pastCheckIns = await json("/api/discovery/assessments", token) as unknown as Array<{
+      id: number;
+      kind: string;
+      scores: Array<{ trait: string; score: number }>;
+      completedAt: string;
+    }>;
+    const saved = pastCheckIns.find((result) => result.id === session.id);
+    assert.ok(saved, "submitted check-in should appear in Past check-ins");
+    assert.equal(saved.kind, "interests");
+    assert.deepEqual(saved.scores, savedResult.scores);
+    assert.equal(saved.completedAt, savedResult.completedAt);
+  } finally {
+    await db.delete(appUsersTable).where(inArray(appUsersTable.id, [userId]));
+  }
+});
+
 after(async () => {
   await pool.end();
 });
