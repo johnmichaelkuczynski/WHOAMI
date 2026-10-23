@@ -15,6 +15,12 @@ The development preview must always be authenticated and usable without an OAuth
 
 **How to apply:** Preserve automatic development access across preview reloads and server restarts. Never enable development authentication shortcuts in the published app.
 
+Navigation must use visible, direct text labels, including “Diagnostic tests”; do not hide destinations behind icon-only controls.
+
+**Why:** The user repeatedly could not find the tests and explicitly rejected the unlabeled navigation icons and vague “check-ins” wording for the full tests.
+
+**How to apply:** Keep navigation labels readable even in the compact menu. Clearly distinguish the full career-interest/personality tests from the separate short check-ins.
+
 Rotating assessment questions should be presented as exploratory estimates inspired by O*NET interest themes and Big Five traits, not as official O*NET/IPIP scores. Different questions on each run are useful for reflection but do not preserve standardized measurement.
 
 **Why:** The user requested fresh questions each time. Calling changing questions official standardized results would misrepresent what the scores mean.

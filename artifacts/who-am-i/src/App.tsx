@@ -26,31 +26,31 @@ import AuthGate, { useAuth } from '@/components/auth-gate';
 
 const queryClient = new QueryClient();
 const navItems = [
-  { href: '/', label: 'Reflection', icon: MessageCircle },
-  { href: '/assessments', label: 'Check-ins', icon: Activity },
-  { href: '/tests', label: 'Tests', icon: CheckCircle2 },
-  { href: '/profile', label: 'Your profile', icon: UserRound },
-  { href: '/recommendations', label: 'Field notes', icon: BookOpen },
+  { href: '/', label: 'Conversation' },
+  { href: '/assessments', label: 'Diagnostic tests' },
+  { href: '/check-ins', label: 'Short check-ins' },
+  { href: '/profile', label: 'Your profile' },
+  { href: '/recommendations', label: 'Books & activities' },
 ];
 const dateLabel = (value?: string) => value ? new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(new Date(value)) : 'Just now';
 const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
 
 function Shell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
+  const activeLocation = location === '/tests' ? '/assessments' : location;
   const { user, signOut } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem('who-am-i-sidebar-collapsed-v2') !== 'false',
   );
-  const current = navItems.find(item => item.href === location)?.label ?? 'Reflection';
+  const current = navItems.find(item => item.href === activeLocation)?.label ?? 'Conversation';
   useEffect(() => {
     localStorage.setItem('who-am-i-sidebar-collapsed-v2', String(sidebarCollapsed));
   }, [sidebarCollapsed]);
   return <div className="app-shell flex bg-background text-foreground">
-    <aside className={`hidden shrink-0 flex-col border-r border-border bg-[hsl(var(--sidebar))] py-6 transition-[width,padding] duration-200 md:flex ${sidebarCollapsed ? 'w-[68px] items-center px-2' : 'w-[230px] px-5'}`}>
+    <aside className={`hidden shrink-0 flex-col border-r border-border bg-[hsl(var(--sidebar))] py-6 transition-[width,padding] duration-200 md:flex ${sidebarCollapsed ? 'w-[160px] px-2' : 'w-[230px] px-5'}`}>
       <div className={`mb-9 flex w-full ${sidebarCollapsed ? 'flex-col items-center gap-3' : 'items-center justify-between gap-3'}`}>
         <Link href="/" className={`flex min-w-0 items-center gap-3 no-underline ${sidebarCollapsed ? 'justify-center' : ''}`} data-testid="link-brand" aria-label="Who Am I? home">
-          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground"><Waves size={19}/></span>
-          {!sidebarCollapsed && <span><span className="block text-sm font-semibold tracking-tight">Who Am I?</span><span className="mono-label text-[9px] text-muted-foreground">A CAREER FIELD GUIDE</span></span>}
+          <span><span className="block text-sm font-semibold tracking-tight">Who Am I?</span>{!sidebarCollapsed && <span className="mono-label text-[9px] text-muted-foreground">A CAREER FIELD GUIDE</span>}</span>
         </Link>
         <button
           type="button"
@@ -58,18 +58,19 @@ function Shell({ children }: { children: ReactNode }) {
           aria-label={sidebarCollapsed ? 'Expand navigation panel' : 'Collapse navigation panel'}
           aria-expanded={!sidebarCollapsed}
           data-testid="button-toggle-sidebar"
-          className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+          className="shrink-0 rounded-lg px-2 py-2 text-[10px] text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
         >
-          {sidebarCollapsed ? <ChevronRight size={16}/> : <ChevronLeft size={16}/>}
+          {sidebarCollapsed ? 'Expand menu' : 'Compact'}
         </button>
       </div>
       {!sidebarCollapsed && <p className="mono-label mb-3 px-2 text-[9px] text-muted-foreground">YOUR SPACE</p>}
       <nav className={`w-full space-y-1 ${sidebarCollapsed ? 'px-1' : ''}`} aria-label="Main navigation">
-        {navItems.map(({ href, label, icon: Icon }) => <Link key={href} href={href}
+        {navItems.map(({ href, label }) => <Link key={href} href={href}
           aria-label={label}
           title={sidebarCollapsed ? label : undefined}
-          className={`flex items-center rounded-lg py-2.5 text-[13px] transition-colors ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${location === href ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:bg-card/70 hover:text-foreground'}`}
-          data-testid={`link-nav-${label.toLowerCase().replaceAll(' ', '-')}`}><Icon size={16}/>{!sidebarCollapsed && <><span>{label}</span>{location === href && <span className="ml-auto size-1.5 rounded-full bg-primary"/>}</>}</Link>)}
+          aria-current={activeLocation === href ? 'page' : undefined}
+          className={`flex items-center rounded-lg px-3 py-3 text-[13px] transition-colors ${activeLocation === href ? 'bg-card font-semibold text-primary shadow-sm' : 'text-muted-foreground hover:bg-card/70 hover:text-foreground'}`}
+          data-testid={`link-nav-${label.toLowerCase().replaceAll(' ', '-')}`}><span>{label}</span></Link>)}
       </nav>
       {!sidebarCollapsed && <div className="mt-auto rounded-xl border border-border/80 bg-card/70 p-4">
         <div className="mb-2 flex items-center gap-2 text-primary"><Sparkles size={15}/><span className="mono-label text-[9px]">A NOTE TO SELF</span></div>
@@ -87,7 +88,7 @@ function Shell({ children }: { children: ReactNode }) {
         {children}
       </div>
       <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-border bg-background/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur md:hidden" aria-label="Mobile navigation">
-        {navItems.map(({ href, label, icon: Icon }) => <Link key={href} href={href} className={`flex flex-1 flex-col items-center gap-1 py-1 text-[9px] ${location === href ? 'text-primary' : 'text-muted-foreground'}`} data-testid={`mobile-nav-${href.slice(1) || 'home'}`}><Icon size={18}/>{label}</Link>)}
+        {navItems.map(({ href, label }) => <Link key={href} href={href} aria-current={activeLocation === href ? 'page' : undefined} className={`flex min-h-10 flex-1 items-center justify-center rounded-md px-1 py-1 text-center text-[10px] font-semibold leading-4 ${activeLocation === href ? 'bg-secondary text-primary' : 'text-muted-foreground'}`} data-testid={`mobile-nav-${href.slice(1) || 'home'}`}>{label}</Link>)}
       </nav>
     </main>
   </div>;
@@ -365,7 +366,8 @@ function Router() {
   const [location] = useLocation();
   return <ErrorBoundary resetKey={location}><Shell><Switch>
     <Route path="/" component={HomePage}/>
-    <Route path="/assessments" component={AssessmentsPage}/>
+    <Route path="/assessments" component={TestsPage}/>
+    <Route path="/check-ins" component={AssessmentsPage}/>
     <Route path="/tests" component={TestsPage}/>
     <Route path="/profile" component={ProfilePage}/>
     <Route path="/recommendations" component={RecommendationsPage}/>

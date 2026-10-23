@@ -350,8 +350,8 @@ export default function TestsPage() {
     <div className="fade-up">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="mono-label mb-2 text-[9px] text-primary">TWO WAYS TO NOTICE A PATTERN</p>
-          <h1 className="serif-display text-[36px] leading-none tracking-[-.02em] md:text-[44px]">Tests</h1>
+          <p className="mono-label mb-2 text-[9px] text-primary">CAREER INTERESTS AND PERSONALITY</p>
+          <h1 className="serif-display text-[36px] leading-none tracking-[-.02em] md:text-[44px]">Diagnostic tests</h1>
           <p className="mt-3 max-w-2xl text-xs leading-5 text-muted-foreground">
             Fresh, original questions are generated for every run. These are exploratory reflections inspired by RIASEC and Big Five structures—not the official validated O*NET or IPIP instruments.
           </p>
@@ -493,7 +493,7 @@ export default function TestsPage() {
         <div className="grid gap-4 md:grid-cols-2">
           <section className="rounded-2xl border border-border bg-[hsl(36_40%_94%)] p-5 md:p-7">
             <p className="mono-label text-[9px] text-primary">60 WORK ACTIVITIES · 10 PER SCALE</p>
-            <h2 className="serif-display mt-3 text-[28px]">RIASEC interest profile</h2>
+            <h2 className="serif-display mt-3 text-[28px]">Career interests test (RIASEC)</h2>
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
               Explore Realistic, Investigative, Artistic, Social, Enterprising, and Conventional interests. Scores are summed from 10 ratings per scale.
             </p>
@@ -504,12 +504,12 @@ export default function TestsPage() {
               data-testid="button-start-riasec"
               className="mt-5 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-[11px] font-semibold text-primary-foreground disabled:opacity-50"
             >
-              <Sparkles size={14} /> Generate new interest questions
+              Start career interests test — 60 questions
             </button>
           </section>
           <section className="rounded-2xl border border-border bg-[hsl(152_24%_91%)] p-5 md:p-7">
             <p className="mono-label text-[9px] text-primary">50 PERSONALITY STATEMENTS · 10 PER TRAIT</p>
-            <h2 className="serif-display mt-3 text-[28px]">Big Five work style</h2>
+            <h2 className="serif-display mt-3 text-[28px]">Personality test (IPIP Big Five)</h2>
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
               Reflect on Extraversion, Agreeableness, Conscientiousness, Emotional Stability, and Intellect/Imagination. Each scale balances five positive and five reverse-keyed items.
             </p>
@@ -520,7 +520,7 @@ export default function TestsPage() {
               data-testid="button-start-ipip"
               className="mt-5 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-[11px] font-semibold text-primary-foreground disabled:opacity-50"
             >
-              <Sparkles size={14} /> Generate new work-style questions
+              Start personality test — 50 questions
             </button>
           </section>
         </div>
