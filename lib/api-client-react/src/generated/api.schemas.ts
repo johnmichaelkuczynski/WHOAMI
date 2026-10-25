@@ -48,6 +48,7 @@ export interface ProfileUpdate {
 export interface CareerConversation {
   id: number;
   title: string;
+  archived?: boolean;
   /** @nullable */
   summary?: string | null;
   createdAt: string;

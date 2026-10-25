@@ -536,6 +536,80 @@ export function useGetDiscoveryDashboard<TData = Awaited<ReturnType<typeof getDi
 
 
 
+export const getStartFreshDiscoveryUrl = () => {
+
+
+
+
+  return `/api/discovery/fresh-start`
+}
+
+/**
+ * @summary Start a blank workspace while preserving past conversations
+ */
+export const startFreshDiscovery = async ( options?: Parameters<typeof customFetch>[1]): Promise<CareerProfile> => {
+
+  return customFetch<CareerProfile>(getStartFreshDiscoveryUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getStartFreshDiscoveryMutationKey = () => ['startFreshDiscovery'] as const;
+
+export const getStartFreshDiscoveryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startFreshDiscovery>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startFreshDiscovery>>, TError,void, TContext> => {
+
+const mutationKey = getStartFreshDiscoveryMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startFreshDiscovery>>, void> = () => {
+
+
+          return  startFreshDiscovery(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartFreshDiscoveryMutationResult = NonNullable<Awaited<ReturnType<typeof startFreshDiscovery>>>
+
+    export type StartFreshDiscoveryMutationError = ErrorType<unknown>
+
+
+    /**
+ * @summary Start a blank workspace while preserving past conversations
+ */
+export const useStartFreshDiscovery = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startFreshDiscovery>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startFreshDiscovery>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getStartFreshDiscoveryMutationOptions(options));
+    }
+
 export const getGetCareerProfileUrl = () => {
 
 

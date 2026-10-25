@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { QueryClientProvider, useIsMutating, useQueryClient } from '@tanstack/react-query';
 import {
   Activity, ArrowDownToLine, ArrowRight, BookOpen, Check, CheckCircle2,
   ChevronLeft, ChevronRight, Compass, FileText, Heart, Lightbulb, Mic, MicOff,
@@ -15,6 +15,7 @@ import {
   useListCareerConversations, useListCareerMessages, useListCareerRecommendations,
   useSendCareerMessage, useStartAssessment, useSubmitAssessment,
   useSummarizeCareerConversation, useUpdateCareerProfile, useUpdateCareerRecommendation,
+  useStartFreshDiscovery,
 } from '@workspace/api-client-react';
 import type { AssessmentSession, CareerRecommendation } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -36,6 +37,30 @@ const navItems = [
 ];
 const dateLabel = (value?: string) => value ? new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(new Date(value)) : 'Just now';
 const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
+const NEW_CONVERSATION_EVENT = 'who-am-i:new-conversation';
+const openBlankConversation = () => { window.dispatchEvent(new Event(NEW_CONVERSATION_EVENT)); };
+
+function FreshStart() {
+  const qc = useQueryClient();
+  const reset = useStartFreshDiscovery();
+  const mutations = useIsMutating();
+  const [error, setError] = useState('');
+  const start = async () => {
+    setError('');
+    try {
+      await reset.mutateAsync();
+      await qc.cancelQueries();
+      qc.clear();
+      window.location.assign(import.meta.env.BASE_URL);
+    } catch (cause) {
+      setError(messageOf(cause));
+    }
+  };
+  return <section className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
+    <div><p className="text-xs font-semibold">Want to begin again?</p><p className="mt-1 max-w-xl text-[11px] text-muted-foreground">Start fresh resets your profile, test results, suggestions and chat context. Past chats stay saved and readable. You stay signed in.</p>{error && <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>}</div>
+    <Button secondary testId="button-start-fresh" onClick={() => void start()} disabled={mutations > 0}>{reset.isPending ? 'Starting fresh…' : 'Start fresh'}</Button>
+  </section>;
+}
 
 function Shell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
@@ -68,6 +93,7 @@ function Shell({ children }: { children: ReactNode }) {
       {!sidebarCollapsed && <p className="mono-label mb-3 px-2 text-[9px] text-muted-foreground">YOUR SPACE</p>}
       <nav className={`w-full space-y-1 ${sidebarCollapsed ? 'px-1' : ''}`} aria-label="Main navigation">
         {navItems.map(({ href, label }) => <Link key={href} href={href}
+          onClick={href === '/' ? openBlankConversation : undefined}
           aria-label={label}
           title={sidebarCollapsed ? label : undefined}
           aria-current={activeLocation === href ? 'page' : undefined}
@@ -87,10 +113,11 @@ function Shell({ children }: { children: ReactNode }) {
       </header>
       <div className="mx-auto max-w-[1240px] px-4 pb-24 pt-6 md:px-8 md:pb-10 md:pt-9">
         <div className="mb-5 flex items-center justify-between md:hidden"><span className="mono-label text-[10px] text-muted-foreground">{current.toUpperCase()}</span><span className="text-[11px] text-muted-foreground">Your space</span></div>
+        <FreshStart/>
         {children}
       </div>
       <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-border bg-background/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur md:hidden" aria-label="Mobile navigation">
-        {navItems.map(({ href, label }) => <Link key={href} href={href} aria-current={activeLocation === href ? 'page' : undefined} className={`flex min-h-10 flex-1 items-center justify-center rounded-md px-1 py-1 text-center text-[10px] font-semibold leading-4 ${activeLocation === href ? 'bg-secondary text-primary' : 'text-muted-foreground'}`} data-testid={`mobile-nav-${href.slice(1) || 'home'}`}>{label}</Link>)}
+        {navItems.map(({ href, label }) => <Link key={href} href={href} onClick={href === '/' ? openBlankConversation : undefined} aria-current={activeLocation === href ? 'page' : undefined} className={`flex min-h-10 flex-1 items-center justify-center rounded-md px-1 py-1 text-center text-[10px] font-semibold leading-4 ${activeLocation === href ? 'bg-secondary text-primary' : 'text-muted-foreground'}`} data-testid={`mobile-nav-${href.slice(1) || 'home'}`}>{label}</Link>)}
       </nav>
     </main>
   </div>;
@@ -119,7 +146,7 @@ function HomePage() {
   const generateRecommendations = useGenerateCareerRecommendations();
   const [activeId, setActiveId] = useState<number | null>(null);
   const conversationList = conversations.data ?? [];
-  const active = conversationList.find(c => c.id === activeId) ?? conversationList[0];
+  const active = conversationList.find(c => c.id === activeId);
   const activeConversationId = active?.id;
   const messages = useListCareerMessages(activeConversationId as number, { query: { enabled: !!activeConversationId, queryKey: getListCareerMessagesQueryKey(activeConversationId as number) } });
   const pendingRequestRef = useRef<{ id: number; content: string; key: string } | null>(null);
@@ -241,7 +268,7 @@ function HomePage() {
   const handleSend = async (event: FormEvent) => {
     event.preventDefault();
     const content = draft.trim();
-    if (!content || sendingRef.current) return;
+    if (!content || sendingRef.current || active?.archived) return;
     sendingRef.current = true;
     setNotice('');
     try {
@@ -277,16 +304,28 @@ function HomePage() {
   };
   const saveSummary = async () => { if (!active) return; setNotice(''); try { const result = await summarize.mutateAsync({ id: active.id }); setSavedSummary(result.summary); await qc.invalidateQueries({ queryKey: getGetCareerProfileQueryKey() }); await qc.invalidateQueries({ queryKey: getListCareerConversationsQueryKey() }); await qc.invalidateQueries({ queryKey: getGetDiscoveryDashboardQueryKey() }); setNotice('Reflection added to your profile.'); } catch (error) { setNotice(messageOf(error)); } };
   const chatLoading = !active && conversations.isLoading;
+  const newConversation = useCallback(() => {
+    if (sendingRef.current || voiceState !== 'idle') {
+      setNotice('Let the current reply or voice recording finish before opening a new conversation.');
+      return;
+    }
+    setActiveId(null); setDraft(''); setNotice(''); setSavedSummary('');
+    setShowNew(false); pendingRequestRef.current = null;
+  }, [voiceState]);
+  useEffect(() => {
+    window.addEventListener(NEW_CONVERSATION_EVENT, newConversation);
+    return () => window.removeEventListener(NEW_CONVERSATION_EVENT, newConversation);
+  }, [newConversation]);
   return <div className="fade-up">
     <SectionHeading eyebrow="A MOMENT TO THINK" title="What’s on your mind?">
-      {active && <div className="flex gap-2"><Button secondary testId="button-export-chat" onClick={exportChat}><ArrowDownToLine size={14}/>Export</Button><Button secondary testId="button-summarize-chat" onClick={saveSummary} disabled={summarize.isPending}>{summarize.isPending ? <LoaderCircle size={14} className="animate-spin"/> : <FileText size={14}/>}Save a summary</Button></div>}
+      <div className="flex flex-wrap gap-2"><Button secondary testId="button-new-blank-conversation" onClick={newConversation} disabled={send.isPending || create.isPending || voiceState !== 'idle'}>New conversation</Button>{active && <><Button secondary testId="button-export-chat" onClick={exportChat}><ArrowDownToLine size={14}/>Export</Button><Button secondary testId="button-summarize-chat" onClick={saveSummary} disabled={summarize.isPending || active.archived}>{summarize.isPending ? <LoaderCircle size={14} className="animate-spin"/> : <FileText size={14}/>}Save a summary</Button></>}</div>
     </SectionHeading>
     {(savedSummary || active?.summary) && <section className="mb-5 rounded-xl border border-primary/15 bg-[hsl(152_24%_91%)] px-5 py-4" data-testid="text-saved-chat-summary"><p className="mono-label mb-2 text-[9px] text-primary">A SUMMARY TO KEEP</p><p className="text-[12px] leading-6 text-foreground">{savedSummary || active?.summary}</p></section>}
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_275px]">
       <section className="flex min-h-[560px] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_12px_38px_-32px_hsl(218_23%_20%/.35)] md:min-h-[calc(100dvh-190px)]">
         <div className="flex min-h-[57px] items-center justify-between border-b border-border px-4 md:px-6">
           <div className="flex min-w-0 items-center gap-3"><span className="grid size-8 shrink-0 place-items-center rounded-full bg-[hsl(152_26%_88%)] text-primary"><Waves size={16}/></span><div className="min-w-0"><p className="truncate text-[13px] font-semibold" data-testid="text-active-conversation">{active?.title ?? 'A new beginning'}</p><p className="text-[10px] text-muted-foreground">A thoughtful space, just for you</p></div></div>
-          <div className="flex gap-1"><button onClick={() => setShowNew(v => !v)} data-testid="button-new-conversation" aria-label="New reflection" className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"><Plus size={17}/></button><button onClick={exportChat} disabled={!active || !(messages.data?.length)} data-testid="button-export-icon" aria-label="Export chat" className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-secondary disabled:opacity-40"><ArrowDownToLine size={16}/></button></div>
+          <div className="flex gap-1"><button onClick={newConversation} disabled={send.isPending || create.isPending || voiceState !== 'idle'} data-testid="button-new-conversation" className="rounded-lg px-2 py-2 text-[11px] text-primary hover:bg-secondary disabled:opacity-40">New conversation</button></div>
         </div>
         {showNew && <form className="flex gap-2 border-b border-border bg-secondary/30 px-4 py-3 md:px-6" onSubmit={async e => { e.preventDefault(); try { await startConversation(newTitle); } catch (error) { setNotice(messageOf(error)); } }}><input value={newTitle} onChange={e => setNewTitle(e.target.value)} autoFocus placeholder="Give this reflection a name" data-testid="input-conversation-title" className="min-w-0 flex-1 rounded-lg border border-border bg-card px-3 py-2 text-xs outline-none focus:border-primary"/><Button type="submit" testId="button-create-conversation" disabled={create.isPending}>{create.isPending ? 'Starting…' : 'Start'}</Button><button type="button" onClick={() => setShowNew(false)} data-testid="button-cancel-conversation" className="grid size-9 place-items-center text-muted-foreground"><X size={15}/></button></form>}
         <div className="flex-1 space-y-5 overflow-y-auto px-4 py-6 md:px-8 md:py-8" data-testid="list-chat-messages">
@@ -295,12 +334,15 @@ function HomePage() {
         </div>
         {notice && <div className="mx-4 mb-2 flex items-center justify-between rounded-lg bg-accent px-3 py-2 text-xs text-accent-foreground md:mx-6" role="status"><span data-testid="status-chat">{notice}</span><button onClick={() => setNotice('')} data-testid="button-dismiss-notice"><X size={13}/></button></div>}
         <form onSubmit={handleSend} className="border-t border-border bg-card px-3 py-3 md:px-6 md:py-4">
+          {active?.archived && <p className="mb-3 text-xs text-muted-foreground" data-testid="text-archived-chat">Saved past chat — read or export it here. Choose New conversation to write without bringing back its context.</p>}
+          <fieldset disabled={active?.archived} className="min-w-0">
           <div className="flex items-end gap-2 rounded-xl border border-border bg-background p-2 focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/10"><textarea value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} placeholder="Write as much or as little as you need…" rows={12} data-testid="input-chat-message" className="max-h-[480px] min-h-[288px] flex-1 resize-y bg-transparent px-2 py-1.5 text-[13px] leading-6 outline-none placeholder:text-muted-foreground/70"/><button type="button" onClick={() => void toggleRecording()} aria-label={voiceState === 'recording' ? 'Stop voice recording' : voiceState === 'transcribing' ? 'Transcribing voice input' : 'Start voice recording'} aria-pressed={voiceState === 'recording'} title={voiceState === 'recording' ? 'Stop and transcribe' : voiceState === 'transcribing' ? 'Transcribing…' : 'Record a message'} disabled={voiceState === 'transcribing'} data-testid="button-voice-input" className={`mb-1 grid size-9 shrink-0 place-items-center rounded-lg transition-colors disabled:opacity-50 ${voiceState === 'recording' ? 'bg-destructive/10 text-destructive' : 'text-muted-foreground hover:bg-secondary hover:text-primary'}`}>{voiceState === 'transcribing' ? <LoaderCircle size={16} className="animate-spin"/> : voiceState === 'recording' ? <MicOff size={16}/> : <Mic size={16}/>}</button><button type="submit" disabled={!draft.trim() || send.isPending || create.isPending} data-testid="button-send-message" aria-label="Send reflection" className="mb-1 grid size-9 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground transition-opacity disabled:opacity-40"><Send size={16}/></button></div><div className="mt-2 flex items-center justify-between px-1 text-[9px] text-muted-foreground"><span>{voiceState === 'recording' ? 'Recording… Tap the microphone to stop and transcribe.' : voiceState === 'transcribing' ? 'Transcribing your recording…' : 'Enter to send · Shift + Enter for a new line'}</span><span>Not a test. No wrong answers.</span></div>
+          </fieldset>
         </form>
       </section>
       <aside className="space-y-4">
         <div className="rounded-2xl border border-border bg-[hsl(36_40%_94%)] p-5"><p className="mono-label text-[9px] text-primary">YOUR JOURNEY, SO FAR</p>{dash.isLoading ? <div className="mt-4"><Skeleton rows={2}/></div> : dash.isError ? <QueryError error={dash.error} retry={() => void dash.refetch()}/> : <><p className="serif-display mt-3 text-[27px] leading-tight" data-testid="text-dashboard-summary">{dash.data?.latestSummary || dash.data?.profile.summary || 'A picture is taking shape.'}</p><div className="mt-5 grid grid-cols-3 gap-2 border-t border-border/70 pt-4">{[['Reflections', dash.data?.conversationCount ?? 0], ['Check-ins', dash.data?.assessmentCount ?? 0], ['Ideas', dash.data?.recommendationCount ?? 0]].map(([label, count]) => <div key={label}><p className="serif-display text-[24px]">{count}</p><p className="text-[9px] text-muted-foreground">{label}</p></div>)}</div></>}</div>
-        <div className="rounded-2xl border border-border bg-card p-5"><div className="mb-4 flex items-center justify-between"><p className="mono-label text-[9px] text-muted-foreground">RECENT REFLECTIONS</p><button onClick={() => setShowNew(true)} data-testid="button-add-reflection-small" className="grid size-7 place-items-center rounded-md text-primary hover:bg-secondary"><Plus size={15}/></button></div>{conversations.isLoading ? <Skeleton rows={2}/> : conversations.isError ? <QueryError error={conversations.error} retry={() => void conversations.refetch()}/> : conversationList.length === 0 ? <p className="text-xs leading-5 text-muted-foreground">Each conversation is a little more clarity. Start one whenever you’re ready.</p> : <div className="space-y-1">{conversationList.slice(0, 5).map(c => <button key={c.id} onClick={() => { setActiveId(c.id); setNotice(''); }} data-testid={`button-select-conversation-${c.id}`} className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left ${active?.id === c.id ? 'bg-secondary/70' : 'hover:bg-secondary/50'}`}><span className="min-w-0 truncate text-[11px] font-medium">{c.title}</span><span className="shrink-0 text-[9px] text-muted-foreground">{dateLabel(c.updatedAt)}</span></button>)}</div>}</div>
+        <div className="rounded-2xl border border-border bg-card p-5"><div className="mb-4 flex items-center justify-between"><p className="mono-label text-[9px] text-muted-foreground">PAST CHATS</p></div><p className="mb-3 text-[11px] text-muted-foreground">Chats are saved automatically to your signed-in account. Chats from before a fresh start are read-only.</p>{conversations.isLoading ? <Skeleton rows={2}/> : conversations.isError ? <QueryError error={conversations.error} retry={() => void conversations.refetch()}/> : conversationList.length === 0 ? <p className="text-xs leading-5 text-muted-foreground">Your conversations will appear here.</p> : <div className="max-h-96 space-y-1 overflow-y-auto">{conversationList.map(c => <button key={c.id} disabled={send.isPending || create.isPending || voiceState !== 'idle'} onClick={() => { setActiveId(c.id); setDraft(''); setNotice(''); setSavedSummary(''); pendingRequestRef.current = null; }} data-testid={`button-select-conversation-${c.id}`} className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left disabled:opacity-50 ${active?.id === c.id ? 'bg-secondary/70' : 'hover:bg-secondary/50'}`}><span className="min-w-0 text-[11px] font-medium">{c.title}{c.archived && <span className="mt-1 block text-[9px] text-muted-foreground">Before fresh start</span>}</span><span className="shrink-0 text-[9px] text-muted-foreground">{dateLabel(c.updatedAt)}</span></button>)}</div>}</div>
         <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-card/60 p-4"><Lightbulb size={16} className="mt-0.5 shrink-0 text-[#c58b43]"/><p className="text-[11px] leading-5 text-muted-foreground">Your profile grows from what you share. Summarize a conversation to keep the insights that matter.</p></div>
       </aside>
     </div>
@@ -374,7 +416,7 @@ function ProfilePage() {
       </form>
       <aside className="space-y-4">
         <div className="rounded-2xl border border-border bg-[hsl(36_40%_94%)] p-5"><p className="mono-label text-[9px] text-primary">LAST UPDATED</p><p className="serif-display mt-2 text-2xl">{dateLabel(profile.data?.updatedAt)}</p><p className="mt-1 text-[10px] text-muted-foreground">Your understanding can change. That’s the point.</p></div>
-        <div className="rounded-2xl border border-border bg-card p-5"><div className="mb-4 flex items-center justify-between"><div><p className="mono-label text-[9px] text-muted-foreground">SAVED CONVERSATIONS</p><h2 className="serif-display mt-1 text-[23px]">The useful bits</h2></div><MessageCircle size={17} className="text-primary"/></div>{conversations.isLoading ? <Skeleton rows={2}/> : conversations.isError ? <QueryError error={conversations.error} retry={() => void conversations.refetch()}/> : !conversations.data?.length ? <p className="text-xs leading-5 text-muted-foreground">When a conversation leaves you with something worth keeping, save its summary from the reflection space.</p> : <div className="space-y-3">{conversations.data.filter(c => c.summary).map(c => <div key={c.id} className="border-t border-border pt-3" data-testid={`summary-conversation-${c.id}`}><p className="text-[11px] font-semibold">{c.title}</p><p className="mt-1 text-[11px] leading-5 text-muted-foreground">{c.summary}</p></div>)}{conversations.data.every(c => !c.summary) && <p className="text-xs text-muted-foreground">No summaries saved yet. The good bits can wait.</p>}</div>}</div>
+        <div className="rounded-2xl border border-border bg-card p-5"><div className="mb-4 flex items-center justify-between"><div><p className="mono-label text-[9px] text-muted-foreground">SAVED CONVERSATIONS</p><h2 className="serif-display mt-1 text-[23px]">The useful bits</h2></div><MessageCircle size={17} className="text-primary"/></div>{conversations.isLoading ? <Skeleton rows={2}/> : conversations.isError ? <QueryError error={conversations.error} retry={() => void conversations.refetch()}/> : !conversations.data?.length ? <p className="text-xs leading-5 text-muted-foreground">When a conversation leaves you with something worth keeping, save its summary from the reflection space.</p> : <div className="space-y-3">{conversations.data.filter(c => c.summary && !c.archived).map(c => <div key={c.id} className="border-t border-border pt-3" data-testid={`summary-conversation-${c.id}`}><p className="text-[11px] font-semibold">{c.title}</p><p className="mt-1 text-[11px] leading-5 text-muted-foreground">{c.summary}</p></div>)}{conversations.data.every(c => !c.summary || c.archived) && <p className="text-xs text-muted-foreground">No summaries saved in this fresh workspace. Past chats remain in Conversation.</p>}</div>}</div>
         <div className="rounded-2xl border border-border bg-card p-5"><div className="mb-4 flex items-center justify-between"><div><p className="mono-label text-[9px] text-muted-foreground">TEST EVIDENCE</p><h2 className="serif-display mt-1 text-[23px]">Patterns over time</h2></div><CheckCircle2 size={17} className="text-primary"/></div>{assessments.isLoading ? <Skeleton rows={2}/> : assessments.isError ? <QueryError error={assessments.error} retry={() => void assessments.refetch()}/> : !assessments.data?.some(result => (result.kind === 'riasec' || result.kind === 'ipip') && !result.verificationRun) ? <p className="text-xs leading-5 text-muted-foreground">Complete either test to add its exploratory score pattern here.{assessments.data?.some(result => result.verificationRun) ? ' QA sample runs remain in test history, not your profile.' : ''}</p> : <div className="space-y-3">{assessments.data.filter(result => (result.kind === 'riasec' || result.kind === 'ipip') && !result.verificationRun).slice(0, 4).map(result => <div key={result.id} className="border-t border-border pt-3"><p className="text-[10px] font-semibold">{result.kind === 'riasec' ? 'RIASEC interest pattern' : 'Big Five work-style pattern'} · {dateLabel(result.completedAt)}</p><p className="mt-1 text-[10px] leading-5 text-muted-foreground">{result.scores.map(score => `${score.trait} ${score.score}/50`).join(' · ')}</p></div>)}</div>}<Link href="/tests" className="mt-4 inline-block text-[10px] font-semibold text-primary underline underline-offset-4">Open Tests</Link></div>
         <div className="rounded-xl bg-[hsl(152_24%_91%)] p-4"><p className="serif-display text-[20px]">No career is one neat sentence.</p><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Keep the contradictions. They’re often where the interesting options live.</p></div>
       </aside>

@@ -99,6 +99,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DashboardSummary"
+  /discovery/fresh-start:
+    post:
+      operationId: startFreshDiscovery
+      tags: [discovery]
+      summary: Start a blank workspace while preserving past conversations
+      responses:
+        "200":
+          description: Fresh workspace profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CareerProfile"
   /discovery/profile:
     get:
       operationId: getCareerProfile
@@ -415,6 +427,7 @@ components:
       properties:
         id: { type: integer }
         title: { type: string }
+        archived: { type: boolean }
         summary: { type: ["string", "null"] }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }

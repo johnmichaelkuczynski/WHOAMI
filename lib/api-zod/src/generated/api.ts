@@ -78,6 +78,19 @@ export const GetDiscoveryDashboardResponse = zod.object({
 
 
 /**
+ * @summary Start a blank workspace while preserving past conversations
+ */
+export const StartFreshDiscoveryResponse = zod.object({
+  "id": zod.number().int(),
+  "summary": zod.string(),
+  "strengths": zod.array(zod.string()),
+  "interests": zod.array(zod.string()),
+  "workPreferences": zod.array(zod.string()),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Get evolving career profile
  */
 export const GetCareerProfileResponse = zod.object({
@@ -116,6 +129,7 @@ export const UpdateCareerProfileResponse = zod.object({
 export const ListCareerConversationsResponseItem = zod.object({
   "id": zod.number().int(),
   "title": zod.string(),
+  "archived": zod.boolean().optional(),
   "summary": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -136,6 +150,7 @@ export const CreateCareerConversationBody = zod.object({
 export const CreateCareerConversationResponse = zod.object({
   "id": zod.number().int(),
   "title": zod.string(),
+  "archived": zod.boolean().optional(),
   "summary": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()

@@ -10,6 +10,7 @@ export const careerProfilesTable = pgTable("career_profiles", {
   strengths: text("strengths").array().notNull().default([]),
   interests: text("interests").array().notNull().default([]),
   workPreferences: text("work_preferences").array().notNull().default([]),
+  freshStartedAt: timestamp("fresh_started_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow()

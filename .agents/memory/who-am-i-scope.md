@@ -9,6 +9,18 @@ The published app must require direct Google OAuth and keep each Google account'
 
 **How to apply:** Preserve account isolation throughout all data reads, writes, and AI context. Do not reintroduce anonymous production use or substitute Clerk for the requested direct Google OAuth.
 
+A user must be able to start completely fresh, as though they just arrived, while past chats remain stored under their Google account. Starting fresh must separate readable chat history from the assistant's active memory; opening an archived chat must not quietly restore its old evidence into a fresh profile.
+
+**Why:** The user requested “EVERYTHING FRESH. AS THOUGH HE JUST SHOWED UP TO THE SITE” and storage of past chats for Gmail-signed-in users, after an old QA conversation repeatedly reopened and made the repaired chat look broken.
+
+**How to apply:** Preserve account-owned past chats without reusing pre-reset summaries, scores, or chat content in fresh recommendations or replies. Keep “New conversation” (retains current account knowledge) distinct from “Start fresh” (resets current knowledge). Never reset the real user's workspace merely to verify this behavior.
+
+Clicking the “Conversation” navigation button must open a blank chat, including when the user is already on that page. Old conversations should appear only when deliberately selected from Past chats.
+
+**Why:** The user repeatedly clicked Conversation expecting a fresh chat but kept seeing the same old conversation.
+
+**How to apply:** Apply the same behavior to desktop and mobile navigation, without deleting saved chats or resetting test scores. Do not interrupt an active reply or voice recording.
+
 The development preview must always be authenticated and usable without an OAuth entry wall. Keep development-only access separate from production account access.
 
 **Why:** The user repeatedly stated, “In the development area, I have to be logged in at all times,” because blocking the preview prevents them from building the app.
